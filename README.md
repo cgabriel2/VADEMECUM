@@ -2,6 +2,8 @@
 
 App de estudio para estudiantes de Medicina: materias, calendario de exámenes, flashcards, cuestionarios, simulacros, cuaderno de errores, fichas, horario y Pomodoro. Cada persona entra con su cuenta y sus datos se guardan en la nube (Supabase).
 
+**App publicada:** https://mednoe.vercel.app (Vercel la actualiza sola con cada cambio que se sube a GitHub).
+
 ## Carpetas
 
 | Carpeta / archivo | Qué es |
@@ -32,7 +34,7 @@ Para probar sin cuenta (solo en tu compu): http://localhost:5173/?local
 ## Configuración de Supabase (una sola vez)
 
 1. **Base de datos:** Supabase → SQL Editor → New query → pegá todo `supabase/schema.sql` → Run.
-2. **Dirección de la app:** Authentication → URL Configuration → Site URL: `http://localhost:5173` (cuando la publiquemos, se cambia por la dirección definitiva).
+2. **Dirección de la app:** Authentication → URL Configuration → Site URL: `https://mednoe.vercel.app`, y en Redirect URLs agregar `http://localhost:5173` para usarla en la compu.
 3. **Confirmación por email (opcional):** Authentication → Sign In / Providers → Email → "Confirm email". Si está activada, cada cuenta nueva tiene que confirmar el correo. El servicio de correo gratis de Supabase manda pocos mails por hora.
 4. **Administradoras:** después de registrarte en la app, corré `supabase/hacer-admin.sql` con tu email.
 
