@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#12695F">
+  <meta name="description" content="App de estudio para estudiantes de Medicina.">
+  <title>Vademécum</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Vademécum">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="Navegación">
+    <div class="brand"><span class="brand-mark" id="bm1"></span>Vademécum</div>
+    <div id="nav-side" class="stack" style="gap:4px"></div>
+    <div class="side-foot" id="cuenta"></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div class="brand-m"><span class="brand-mark" id="bm2"></span></div>
+      <div class="search">
+        <span id="q-ico"></span>
+        <input id="q" type="text" placeholder="Buscar materias, apuntes, términos, exámenes…" autocomplete="off" aria-label="Buscar">
+        <div class="qres" id="qres" hidden></div>
+      </div>
+      <div class="streak" id="streak" title="Días seguidos estudiando"></div>
+      <button class="pomo-btn" id="pomo" data-act="pomo" aria-label="Pomodoro"></button>
+      <div class="notif" id="pomo-panel" hidden></div>
+      <button class="icon-btn bell" id="bell" data-act="notif" aria-label="Avisos"></button>
+      <div class="notif" id="notif" hidden></div>
+    </header>
+    <main id="view"></main>
+  </div>
+  <nav class="bottom" id="nav-bottom" aria-label="Navegación"></nav>
+  <button class="fab" id="fab" data-act="ai-open" aria-label="Abrir asistente de IA"></button>
+  <section class="ai" id="ai" hidden aria-label="Asistente de IA">
+    <div class="ai-h">
+      <span class="brand-mark" id="bm3"></span>
+      <div style="flex:1"><h3>Asistente de estudio</h3><p class="small muted">Preguntá lo que quieras sobre tus materias</p></div>
+      <button class="btn ghost sm" data-act="ai-close" aria-label="Cerrar" id="ai-x"></button>
+    </div>
+    <div class="ai-log" id="ai-log"></div>
+    <form class="ai-f" id="ai-form">
+      <input id="ai-in" type="text" placeholder="Ej: explicame el ciclo cardíaco" autocomplete="off">
+      <button class="btn pri" id="ai-send" type="submit" aria-label="Enviar"></button>
+    </form>
+  </section>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <div class="modal-wrap" id="modal" hidden></div>
+</div>
+<div class="sync-err" id="sync-err" role="status" hidden></div>
+<div class="auth" id="auth"><div class="auth-card"><p class="muted">Cargando…</p></div></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
