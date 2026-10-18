@@ -1,0 +1,137 @@
+-- =====================================================================
+-- Vademécum: base de datos
+-- Pegá todo este archivo en Supabase → SQL Editor → New query → Run.
+-- Se puede volver a correr sin romper nada (no borra datos).
+-- =====================================================================
+
+-- 1. Perfiles: una fila por cuenta, se crea sola al registrarse -------------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  nombre text,
+  email text,
+  is_admin boolean not null default false,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz
+);
+
+-- 2. Datos de estudio de cada cuenta (materias, flashcards, progreso, etc.) --
+create table if not exists public.user_data (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+-- 3. Registro de uso: sesiones (tiempo en la app) y eventos (qué hacen) -----
+create table if not exists public.usage_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  started_at timestamptz not null default now(),
+  last_ping_at timestamptz not null default now(),
+  seconds integer not null default 0,
+  device text
+);
+create index if not exists usage_sessions_user_idx on public.usage_sessions (user_id, started_at desc);
+
+create table if not exists public.usage_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  evento text not null,
+  detalle text
+);
+create index if not exists usage_events_time_idx on public.usage_events (created_at desc);
+
+-- 4. ¿Quien pregunta es administradora? -------------------------------------
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
+$$;
+
+-- 5. Crear el perfil automáticamente al registrarse -------------------------
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, email, nombre)
+  values (new.id, new.email, coalesce(nullif(new.raw_user_meta_data->>'nombre', ''), split_part(new.email, '@', 1)))
+  on conflict (id) do nothing;
+  return new;
+end $$;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- 6. Seguridad: cada persona ve y modifica solo lo suyo ---------------------
+alter table public.profiles enable row level security;
+alter table public.user_data enable row level security;
+alter table public.usage_sessions enable row level security;
+alter table public.usage_events enable row level security;
+
+drop policy if exists "perfil propio o admin" on public.profiles;
+create policy "perfil propio o admin" on public.profiles for select using (id = auth.uid() or public.is_admin());
+drop policy if exists "editar perfil propio" on public.profiles;
+create policy "editar perfil propio" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
+-- Nadie puede darse permisos de administradora desde la app: solo se puede cambiar el nombre
+revoke update on public.profiles from authenticated, anon;
+grant update (nombre) on public.profiles to authenticated;
+
+-- Los datos de estudio son privados: ni las administradoras los ven
+drop policy if exists "datos propios: leer" on public.user_data;
+create policy "datos propios: leer" on public.user_data for select using (user_id = auth.uid());
+drop policy if exists "datos propios: crear" on public.user_data;
+create policy "datos propios: crear" on public.user_data for insert with check (user_id = auth.uid());
+drop policy if exists "datos propios: actualizar" on public.user_data;
+create policy "datos propios: actualizar" on public.user_data for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "sesiones: leer propias o admin" on public.usage_sessions;
+create policy "sesiones: leer propias o admin" on public.usage_sessions for select using (user_id = auth.uid() or public.is_admin());
+drop policy if exists "sesiones: crear propias" on public.usage_sessions;
+create policy "sesiones: crear propias" on public.usage_sessions for insert with check (user_id = auth.uid());
+
+drop policy if exists "eventos: crear propios" on public.usage_events;
+create policy "eventos: crear propios" on public.usage_events for insert with check (user_id = auth.uid());
+drop policy if exists "eventos: leer admin" on public.usage_events;
+create policy "eventos: leer admin" on public.usage_events for select using (public.is_admin());
+
+-- 7. Sumar tiempo de uso (la app lo llama cada minuto mientras está en pantalla)
+create or replace function public.track_ping(p_session uuid, p_seconds integer)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.usage_sessions
+     set seconds = seconds + greatest(0, least(coalesce(p_seconds, 0), 120)), last_ping_at = now()
+   where id = p_session and user_id = auth.uid();
+  update public.profiles set last_seen_at = now() where id = auth.uid();
+end $$;
+
+-- 8. Estadísticas para el panel "Uso de la app" (solo administradoras) ------
+create or replace function public.admin_stats()
+returns json language plpgsql stable security definer set search_path = public as $$
+declare r json;
+begin
+  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  select json_build_object(
+    'usuarios', (select coalesce(json_agg(u order by u.ultimo desc nulls last), '[]'::json) from (
+      select p.id, p.nombre, p.email, p.is_admin, p.created_at as registrada,
+             greatest(p.last_seen_at, (select max(s.started_at) from public.usage_sessions s where s.user_id = p.id)) as ultimo,
+             coalesce((select sum(s.seconds) from public.usage_sessions s where s.user_id = p.id), 0) as seg_total,
+             coalesce((select sum(s.seconds) from public.usage_sessions s where s.user_id = p.id and s.started_at > now() - interval '7 days'), 0) as seg_7d,
+             (select count(*) from public.usage_sessions s where s.user_id = p.id) as sesiones
+        from public.profiles p) u),
+    'diario', (select coalesce(json_agg(d order by d.dia), '[]'::json) from (
+      select to_char((s.started_at at time zone 'America/Argentina/Buenos_Aires')::date, 'YYYY-MM-DD') as dia,
+             count(distinct s.user_id) as usuarias, sum(s.seconds) as segundos
+        from public.usage_sessions s
+       where s.started_at > now() - interval '31 days'
+       group by 1) d),
+    'eventos', (select coalesce(json_agg(e), '[]'::json) from (
+      select evento, detalle, count(*) as n
+        from public.usage_events
+       where created_at > now() - interval '30 days'
+       group by evento, detalle) e)
+  ) into r;
+  return r;
+end $$;
+
+revoke execute on function public.admin_stats() from anon;
+revoke execute on function public.track_ping(uuid, integer) from anon;
+grant execute on function public.admin_stats() to authenticated;
+grant execute on function public.track_ping(uuid, integer) to authenticated;
