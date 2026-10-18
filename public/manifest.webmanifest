@@ -1,6 +1,6 @@
 {
-  "name": "Vademécum",
-  "short_name": "Vademécum",
+  "name": "MedNoe",
+  "short_name": "MedNoe",
   "description": "App de estudio para estudiantes de Medicina.",
   "lang": "es",
   "start_url": "/",

@@ -9,7 +9,7 @@ const authBox = $('#auth');
 const LOCAL = import.meta.env.DEV && new URLSearchParams(location.search).has('local');
 
 /* ---------- pantallas de la cuenta ---------- */
-const marca = `<div class="auth-brand"><img src="/icon.svg" alt="" width="40" height="40"><span>Vademécum</span></div>`;
+const marca = `<div class="auth-brand"><img src="/icon.svg" alt="" width="40" height="40"><span>MedNoe</span></div>`;
 function pantalla(html){ authBox.hidden = false; authBox.innerHTML = `<div class="auth-card">${marca}${html}</div>`; const f = authBox.querySelector('input'); f && f.focus(); }
 const msg = (texto, tipo = 'err') => { const m = $('#auth-msg'); if (m){ m.textContent = texto; m.className = 'auth-msg ' + tipo; } };
 const ocupado = (form, si, texto) => { const b = form.querySelector('[type=submit]'); if (!b) return; if (si){ b.dataset.txt = b.textContent; b.textContent = texto; } else if (b.dataset.txt) b.textContent = b.dataset.txt; b.disabled = si; };

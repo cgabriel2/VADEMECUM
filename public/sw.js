@@ -1,6 +1,6 @@
 // Service worker: guarda la app en el teléfono para que abra rápido y también sin conexión.
 // Los datos (Supabase) y las fuentes siempre van por internet; acá solo se guardan los archivos de la app.
-const CACHE = 'vademecum-v1';
+const CACHE = 'mednoe-v2';
 const BASE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => {

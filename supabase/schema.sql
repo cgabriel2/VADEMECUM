@@ -1,5 +1,5 @@
 -- =====================================================================
--- Vademécum: base de datos
+-- MedNoe: base de datos
 -- Pegá todo este archivo en Supabase → SQL Editor → New query → Run.
 -- Se puede volver a correr sin romper nada (no borra datos).
 -- =====================================================================

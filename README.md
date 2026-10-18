@@ -1,4 +1,4 @@
-# Vademécum
+# MedNoe
 
 App de estudio para estudiantes de Medicina: materias, calendario de exámenes, flashcards, cuestionarios, simulacros, cuaderno de errores, fichas, horario y Pomodoro. Cada persona entra con su cuenta y sus datos se guardan en la nube (Supabase).
 
