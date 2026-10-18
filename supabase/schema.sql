@@ -40,12 +40,17 @@ create table if not exists public.usage_events (
   detalle text
 );
 create index if not exists usage_events_time_idx on public.usage_events (created_at desc);
+create index if not exists usage_events_user_idx on public.usage_events (user_id);
 
--- 4. ¿Quien pregunta es administradora? -------------------------------------
-create or replace function public.is_admin()
+-- 4. ¿Quien pregunta es administradora? En un esquema privado: no se puede llamar desde la API
+create schema if not exists private;
+grant usage on schema private to authenticated;
+create or replace function private.is_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
+  select coalesce((select is_admin from public.profiles where id = (select auth.uid())), false);
 $$;
+revoke execute on function private.is_admin() from public, anon;
+grant execute on function private.is_admin() to authenticated;
 
 -- 5. Crear el perfil automáticamente al registrarse -------------------------
 create or replace function public.handle_new_user()
@@ -59,6 +64,7 @@ end $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 -- 6. Seguridad: cada persona ve y modifica solo lo suyo ---------------------
 alter table public.profiles enable row level security;
@@ -67,30 +73,34 @@ alter table public.usage_sessions enable row level security;
 alter table public.usage_events enable row level security;
 
 drop policy if exists "perfil propio o admin" on public.profiles;
-create policy "perfil propio o admin" on public.profiles for select using (id = auth.uid() or public.is_admin());
+create policy "perfil propio o admin" on public.profiles for select to authenticated
+  using (id = (select auth.uid()) or (select private.is_admin()));
 drop policy if exists "editar perfil propio" on public.profiles;
-create policy "editar perfil propio" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
+create policy "editar perfil propio" on public.profiles for update to authenticated
+  using (id = (select auth.uid())) with check (id = (select auth.uid()));
 -- Nadie puede darse permisos de administradora desde la app: solo se puede cambiar el nombre
 revoke update on public.profiles from authenticated, anon;
 grant update (nombre) on public.profiles to authenticated;
 
 -- Los datos de estudio son privados: ni las administradoras los ven
 drop policy if exists "datos propios: leer" on public.user_data;
-create policy "datos propios: leer" on public.user_data for select using (user_id = auth.uid());
+create policy "datos propios: leer" on public.user_data for select to authenticated using (user_id = (select auth.uid()));
 drop policy if exists "datos propios: crear" on public.user_data;
-create policy "datos propios: crear" on public.user_data for insert with check (user_id = auth.uid());
+create policy "datos propios: crear" on public.user_data for insert to authenticated with check (user_id = (select auth.uid()));
 drop policy if exists "datos propios: actualizar" on public.user_data;
-create policy "datos propios: actualizar" on public.user_data for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "datos propios: actualizar" on public.user_data for update to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 
 drop policy if exists "sesiones: leer propias o admin" on public.usage_sessions;
-create policy "sesiones: leer propias o admin" on public.usage_sessions for select using (user_id = auth.uid() or public.is_admin());
+create policy "sesiones: leer propias o admin" on public.usage_sessions for select to authenticated
+  using (user_id = (select auth.uid()) or (select private.is_admin()));
 drop policy if exists "sesiones: crear propias" on public.usage_sessions;
-create policy "sesiones: crear propias" on public.usage_sessions for insert with check (user_id = auth.uid());
+create policy "sesiones: crear propias" on public.usage_sessions for insert to authenticated with check (user_id = (select auth.uid()));
 
 drop policy if exists "eventos: crear propios" on public.usage_events;
-create policy "eventos: crear propios" on public.usage_events for insert with check (user_id = auth.uid());
+create policy "eventos: crear propios" on public.usage_events for insert to authenticated with check (user_id = (select auth.uid()));
 drop policy if exists "eventos: leer admin" on public.usage_events;
-create policy "eventos: leer admin" on public.usage_events for select using (public.is_admin());
+create policy "eventos: leer admin" on public.usage_events for select to authenticated using ((select private.is_admin()));
 
 -- 7. Sumar tiempo de uso (la app lo llama cada minuto mientras está en pantalla)
 create or replace function public.track_ping(p_session uuid, p_seconds integer)
@@ -107,7 +117,7 @@ create or replace function public.admin_stats()
 returns json language plpgsql stable security definer set search_path = public as $$
 declare r json;
 begin
-  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  if not private.is_admin() then raise exception 'No autorizado'; end if;
   select json_build_object(
     'usuarios', (select coalesce(json_agg(u order by u.ultimo desc nulls last), '[]'::json) from (
       select p.id, p.nombre, p.email, p.is_admin, p.created_at as registrada,
@@ -131,7 +141,8 @@ begin
   return r;
 end $$;
 
-revoke execute on function public.admin_stats() from anon;
-revoke execute on function public.track_ping(uuid, integer) from anon;
+-- 9. Permisos de las funciones: nada se puede llamar sin haber iniciado sesión
+revoke execute on function public.admin_stats() from public, anon;
+revoke execute on function public.track_ping(uuid, integer) from public, anon;
 grant execute on function public.admin_stats() to authenticated;
 grant execute on function public.track_ping(uuid, integer) to authenticated;
