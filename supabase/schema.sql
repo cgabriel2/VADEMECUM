@@ -146,3 +146,25 @@ revoke execute on function public.admin_stats() from public, anon;
 revoke execute on function public.track_ping(uuid, integer) from public, anon;
 grant execute on function public.admin_stats() to authenticated;
 grant execute on function public.track_ping(uuid, integer) to authenticated;
+
+-- 10. Terminología general compartida: la leen todas las cuentas, la editan solo administradoras
+create table if not exists public.glossary_terms (
+  id bigint generated always as identity primary key,
+  term text not null check (length(trim(term)) > 0),
+  definition text not null check (length(trim(definition)) > 0),
+  category text,
+  source text,
+  term_key text generated always as (lower(trim(term))) stored unique,
+  created_by uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists glossary_terms_created_by_idx on public.glossary_terms (created_by);
+alter table public.glossary_terms enable row level security;
+drop policy if exists "terminos: leer" on public.glossary_terms;
+create policy "terminos: leer" on public.glossary_terms for select to authenticated using (true);
+drop policy if exists "terminos: crear admin" on public.glossary_terms;
+create policy "terminos: crear admin" on public.glossary_terms for insert to authenticated with check ((select private.is_admin()));
+drop policy if exists "terminos: editar admin" on public.glossary_terms;
+create policy "terminos: editar admin" on public.glossary_terms for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
+drop policy if exists "terminos: borrar admin" on public.glossary_terms;
+create policy "terminos: borrar admin" on public.glossary_terms for delete to authenticated using ((select private.is_admin()));

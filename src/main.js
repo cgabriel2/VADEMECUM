@@ -179,10 +179,43 @@ async function entrar(user){
   } else if (fila){ datos = fila.data; ultimoSync = Date.parse(fila.updated_at); }
   else if (cache) datos = cache;
   else inicio = await verBienvenida(perfil.nombre);
+  const glosario = await cargarGlosario();
   await iniciarUso();
   track('ingreso', dispositivo());
-  arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio);
+  arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio, glosario);
 }
+
+/* ---------- terminología compartida (la cargan las administradoras) ---------- */
+const GLOS_CACHE = 'vdm-glosario';
+const CAMPOS_TERMINO = 'id, term, definition, category, source';
+async function cargarGlosario(){
+  try {
+    const todos = [];
+    for (let desde = 0; ; desde += 1000){
+      const { data, error } = await supabase.from('glossary_terms').select(CAMPOS_TERMINO).order('term').range(desde, desde + 999);
+      if (error) throw error;
+      todos.push(...data); if (data.length < 1000) break;
+    }
+    try { localStorage.setItem(GLOS_CACHE, JSON.stringify(todos)); } catch (e) {}
+    return todos;
+  } catch (e) {
+    try { return JSON.parse(localStorage.getItem(GLOS_CACHE)) || []; } catch (e2) { return []; }
+  }
+}
+const limpiarTermino = t => ({ term: String(t.term || '').trim(), definition: String(t.definition || '').trim(), category: (t.category || '').trim() || null, source: (t.source || '').trim() || null });
+const glosario = {
+  async agregar(t){ const { data, error } = await supabase.from('glossary_terms').insert(limpiarTermino(t)).select(CAMPOS_TERMINO).single(); if (error) throw new Error(error.code === '23505' ? 'Ese término ya está cargado.' : errorTexto(error)); return data; },
+  async editar(id, t){ const { data, error } = await supabase.from('glossary_terms').update(limpiarTermino(t)).eq('id', id).select(CAMPOS_TERMINO).single(); if (error) throw new Error(error.code === '23505' ? 'Ya hay otro término con ese nombre.' : errorTexto(error)); return data; },
+  async borrar(id){ const { error } = await supabase.from('glossary_terms').delete().eq('id', id); if (error) throw new Error(errorTexto(error)); },
+  async importar(lista){
+    const nuevos = [];
+    for (let i = 0; i < lista.length; i += 500){
+      const { data, error } = await supabase.from('glossary_terms').upsert(lista.slice(i, i + 500).map(limpiarTermino), { onConflict: 'term_key', ignoreDuplicates: true }).select(CAMPOS_TERMINO);
+      if (error) throw new Error(errorTexto(error)); nuevos.push(...(data || []));
+    }
+    return nuevos;
+  }
+};
 
 async function salir(){
   enviarEventos(); clearTimeout(timerGuardar); await subir();
@@ -191,8 +224,8 @@ async function salir(){
 }
 async function estadisticas(){ const { data, error } = await supabase.rpc('admin_stats'); if (error) throw new Error(errorTexto(error)); return data; }
 
-function arrancar(user, data, inicio){
-  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas };
+function arrancar(user, data, inicio, glos){
+  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario };
   import('./app.js').then(() => { authBox.hidden = true; authBox.innerHTML = ''; });
 }
 
@@ -202,8 +235,27 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) window.addEventListene
 
 if (LOCAL){
   let datos = null; try { datos = JSON.parse(localStorage.getItem('vdm-local')); } catch (e) {}
-  window.__VDM__ = { user: null, data: datos, inicio: new URLSearchParams(location.search).get('local') === 'vacio' ? 'vacio' : 'ejemplo',
-    save: S => { try { localStorage.setItem('vdm-local', JSON.stringify(S)); } catch (e) {} }, track: () => {}, logout: () => {}, adminStats: async () => ({ usuarios: [], diario: [], eventos: [] }) };
+  // Terminología de prueba guardada en este navegador; en modo local se actúa como administradora
+  let glos = null; try { glos = JSON.parse(localStorage.getItem('vdm-local-glos')); } catch (e) {}
+  if (!glos) glos = [
+    { id: 1, term: 'Taquicardia', definition: 'Frecuencia cardíaca mayor a 100 latidos por minuto en reposo.', category: 'Signos y síntomas', source: 'Prueba local' },
+    { id: 2, term: 'Bradicardia', definition: 'Frecuencia cardíaca menor a 60 latidos por minuto en reposo.', category: 'Signos y síntomas', source: 'Prueba local' },
+    { id: 3, term: 'Disnea', definition: 'Sensación de falta de aire o dificultad para respirar.', category: 'Signos y síntomas', source: 'Prueba local' },
+    { id: 4, term: 'Cianosis', definition: 'Coloración azulada de piel y mucosas por aumento de la hemoglobina desoxigenada.', category: 'Signos y síntomas', source: 'Prueba local' },
+    { id: 5, term: '-itis', definition: 'Sufijo que indica inflamación, como en apendicitis.', category: 'Sufijos', source: 'Prueba local' },
+    { id: 6, term: '-ectomía', definition: 'Sufijo que indica extirpación quirúrgica, como en apendicectomía.', category: 'Sufijos', source: 'Prueba local' }
+  ];
+  const guardarGlos = () => { try { localStorage.setItem('vdm-local-glos', JSON.stringify(glos)); } catch (e) {} };
+  let sig = Math.max(0, ...glos.map(g => g.id)) + 1;
+  const api = {
+    async agregar(t){ const x = limpiarTermino(t); if (glos.some(g => g.term.toLowerCase() === x.term.toLowerCase())) throw new Error('Ese término ya está cargado.'); const row = { id: sig++, ...x }; glos.push(row); guardarGlos(); return row; },
+    async editar(id, t){ const g = glos.find(x => x.id === id); Object.assign(g, limpiarTermino(t)); guardarGlos(); return { ...g }; },
+    async borrar(id){ glos = glos.filter(x => x.id !== id); guardarGlos(); },
+    async importar(lista){ const out = []; for (const t of lista){ const x = limpiarTermino(t); if (!glos.some(g => g.term.toLowerCase() === x.term.toLowerCase())){ const row = { id: sig++, ...x }; glos.push(row); out.push(row); } } guardarGlos(); return out; }
+  };
+  window.__VDM__ = { user: null, local: true, data: datos, inicio: new URLSearchParams(location.search).get('local') === 'vacio' ? 'vacio' : 'ejemplo',
+    save: S => { try { localStorage.setItem('vdm-local', JSON.stringify(S)); } catch (e) {} }, track: () => {}, logout: () => {}, adminStats: async () => ({ usuarios: [], diario: [], eventos: [] }),
+    glosario: glos.map(g => ({ ...g })), glosarioApi: api };
   import('./app.js').then(() => { authBox.hidden = true; });
 } else {
   supabase.auth.getSession().then(({ data }) => {

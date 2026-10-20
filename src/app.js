@@ -320,6 +320,8 @@ if (!S || (S.v !== 2 && S.v !== 3)) S = HOST.inicio === 'vacio' ? emptyState() :
 const save = () => { try { HOST.save && HOST.save(S); } catch (e) {} };
 if (S.v === 2) addV3(S); // suma lo de la versión 3 sin tocar lo que ya se cargó
 if (nuevo) save();
+// Terminología: términos propios de la cuenta y progreso de práctica (los compartidos vienen de la base)
+if (!S.glosario) S.glosario = { propios: [], stats: {}, hist: [] };
 
 /* ---------- consultas ---------- */
 const mat = id => S.materias.find(m => m.id === id);
@@ -339,8 +341,8 @@ function markStudy(){ const t = iso(TODAY); if (S.racha.ultimo === t) return; S.
 function logH(tipo, materiaId, u, ref, ok){ S.historial.push({ t: Date.now(), tipo, materiaId, u, ref, ok }); markStudy(); save(); track('respuesta', tipo); }
 
 /* ---------- navegación ---------- */
-const NAV = [['inicio','Inicio','home'],['horario','Horario','grid'],['materias','Materias','book'],['practicar','Practicar','cards'],['fichas','Fichas','pill'],['referencia','Referencia','flask'],['progreso','Progreso','chart'],['carrera','Carrera','cap']];
-const NAV_M = ['inicio','materias','practicar','fichas'], MORE = ['horario','referencia','progreso','carrera'];
+const NAV = [['inicio','Inicio','home'],['horario','Horario','grid'],['materias','Materias','book'],['practicar','Practicar','cards'],['fichas','Fichas','pill'],['terminos','Terminología','list'],['referencia','Referencia','flask'],['progreso','Progreso','chart'],['carrera','Carrera','cap']];
+const NAV_M = ['inicio','materias','practicar','fichas'], MORE = ['horario','terminos','referencia','progreso','carrera'];
 if (HOST.user && HOST.user.isAdmin){ NAV.push(['admin','Uso de la app','pulse']); MORE.push('admin'); }
 let R = { view:'inicio' };
 function go(view, params = {}){ closeModal(); R = { view, ...params }; render(); window.scrollTo(0,0); track('vista', view); }
@@ -357,7 +359,7 @@ let timer = null;
 function render(){
   clearInterval(timer);
   renderNav(); renderBell();
-  const V = { inicio:vInicio, materias:vMaterias, materia:vMateria, evento:vEvento, practicar:vPracticar, progreso:vProgreso, carrera:vCarrera, horario:vHorario, fichas:vFichas, referencia:vReferencia, admin:vAdmin }[R.view] || vInicio;
+  const V = { inicio:vInicio, materias:vMaterias, materia:vMateria, evento:vEvento, practicar:vPracticar, progreso:vProgreso, carrera:vCarrera, horario:vHorario, fichas:vFichas, referencia:vReferencia, admin:vAdmin, terminos:vTerminos }[R.view] || vInicio;
   $('#view').innerHTML = V();
   if (R.view === 'evento') { tickCountdown(); timer = setInterval(tickCountdown, 30000); }
   if (R.view === 'referencia' && RF.tab === 'calc') CALCS.forEach(c => runCalc(c.id));
@@ -587,8 +589,8 @@ function vFlash(){
 function newQuizItem(){ const d = deck().filter(c => !c.img); if (!d.length) return null;
   const pool = shuffle(d).sort((a,b) => (b.bad - b.ok) - (a.bad - a.ok)).slice(0, Math.max(3, Math.ceil(d.length/2)));
   return { id: pool[Math.floor(Math.random()*pool.length)].id, answer:'', res:null, ai:null }; }
-function gradeQuiz(c, ans){
-  if (P.dir === 'dt'){ const a = norm(ans), t = norm(c.term); const ok = a === t || (t.length > 5 && lev(a, t) <= 2) || (a.length > 3 && t.split(' ').length > 1 && t.startsWith(a));
+function gradeQuiz(c, ans, dir = P.dir){
+  if (dir === 'dt'){ const a = norm(ans), t = norm(c.term); const ok = a === t || (t.length > 5 && lev(a, t) <= 2) || (a.length > 3 && t.split(' ').length > 1 && t.startsWith(a));
     return { ok, detail: ok ? 'Escribiste el término correcto.' : 'El término no coincide.' }; }
   const STOP = new Set(['para','sobre','entre','desde','hasta','donde','cuando','como','dentro','antes','menos','mayor','misma','mismo','otros','otras','suelen','produce','cada','tiene','partir','estudio']);
   const keys = [...new Set(norm(c.def).split(' ').filter(w => w.length >= 5 && !STOP.has(w)))];
@@ -769,6 +771,7 @@ function search(qs){
     else if (b.texto && has(b.texto)){ const i = norm(b.texto).indexOf(q); out.push({ tag:'En apunte', t:b.titulo, s:'…' + b.texto.slice(Math.max(0, i - 30), i + 70) + '…', go:['materia', b.materiaId, 'biblio'] }); } });
   S.eventos.forEach(e => (has(e.titulo) || has(e.tipo + ' ' + mat(e.materiaId).nombre)) && out.push({ tag:e.tipo === 'TP' ? 'TP' : 'Examen', t:e.tipo === 'TP' ? e.titulo : `${e.tipo} de ${mat(e.materiaId).nombre}`, s:fmtLong(e.fecha), go:['evento', e.id] }));
   S.cards.forEach(c => (has(c.term) || has(c.def)) && out.push({ tag:'Término', t:c.term, s:c.def, card:c.id }));
+  terminos().forEach(t => has(t.term) && out.push({ tag:'Terminología', t:t.term, s:t.def, tm:t.key }));
   ['farm','enf'].forEach(k => { const T = FI_TIPOS[k]; S.fichas[T.key].forEach(x => (has(x.nombre) || has(x[T.sub] || '')) && out.push({ tag: k === 'farm' ? 'Fármaco' : 'Enfermedad', t:x.nombre, s:x[T.sub] || '', ficha:x.id, fk:k })); });
   S.mnemos.forEach(x => (has(x.titulo) || has(x.texto)) && out.push({ tag:'Mnemotecnia', t:x.titulo, s:x.texto, mne:true }));
   return out.slice(0, 16);
@@ -786,6 +789,7 @@ function pickResult(i){
   const r = lastRes[i]; $('#qres').hidden = true; $('#q').value = '';
   if (r.ficha){ FI.tab = r.fk; FI.q = ''; go('fichas'); A['fi-open']({ id: r.ficha }); return; }
   if (r.mne){ FI.tab = 'mne'; FI.q = r.t; go('fichas'); return; }
+  if (r.tm){ TM.tab = 'buscar'; TM.q = r.t; go('terminos'); return; }
   if (r.card){ const c = S.cards.find(x => x.id === r.card); modal(`<div class="row between"><p class="eyebrow">${esc(mat(c.materiaId).nombre)} · Término</p><button class="btn ghost sm" data-act="close-modal" aria-label="Cerrar">${I('x',16)}</button></div><h2>${esc(c.term)}</h2><p>${esc(c.def)}</p><div class="row"><button class="btn pri" data-act="practice" data-tab="flash" data-m="${c.materiaId}">Repasar flashcards de ${esc(mat(c.materiaId).nombre)}</button></div>`); return; }
   go(r.go[0], { id: r.go[1], tab: r.go[2] });
 }
@@ -2049,6 +2053,220 @@ document.addEventListener('submit', e => {
   }
 });
 
+/* ---------- terminología general: compartida (base de datos) + propia de cada cuenta ---------- */
+const GL = { global: (HOST.glosario || []).slice(), api: HOST.glosarioApi || null };
+const esAdmin = () => !!(HOST.user ? HOST.user.isAdmin : HOST.local);
+let TM = { tab:'buscar', q:'', cat:'', dir:'td', soloFallados:false, queue:[], i:0, flipped:false, ok:0, bad:0, quiz:null, mc:null };
+let tmCache = null;
+const tmInvalidar = () => { tmCache = null; };
+const tmClave = s => s.replace(/^-/, '');
+function terminos(){
+  if (tmCache) return tmCache;
+  const g = GL.global.map(x => ({ key:'g:' + x.id, id:x.id, term:x.term, def:x.definition, cat:x.category || '', src:x.source || '', global:true }));
+  const p = (S.glosario.propios || []).map(x => ({ key:'p:' + x.id, id:x.id, term:x.term, def:x.def, cat:x.cat || '', src:x.src || '', global:false }));
+  return tmCache = [...g, ...p].sort((a, b) => tmClave(a.term).localeCompare(tmClave(b.term), 'es', { sensitivity:'base' }));
+}
+const tmFind = k => terminos().find(t => t.key === k);
+const tmStat = k => S.glosario.stats[k] || { ok:0, bad:0, box:1 };
+const tmPool = () => terminos().filter(t => (!TM.cat || t.cat === TM.cat) && (!TM.soloFallados || tmStat(t.key).bad > tmStat(t.key).ok));
+const tmReset = () => { TM.queue = []; TM.i = 0; TM.flipped = false; TM.quiz = null; TM.mc = null; };
+function tmMarcar(k, ok){
+  const s = S.glosario.stats[k] = { ...tmStat(k) };
+  if (ok){ s.ok++; s.box = Math.min(5, s.box + 1); TM.ok++; } else { s.bad++; s.box = 1; TM.bad++; }
+  S.glosario.hist.push({ t: Date.now(), ok }); if (S.glosario.hist.length > 2000) S.glosario.hist.splice(0, S.glosario.hist.length - 2000);
+  markStudy(); save(); track('respuesta', 'terminologia');
+}
+const tmFuente = t => !t.src ? '' : /^https?:\/\//i.test(t.src) ? `<a href="${esc(t.src)}" target="_blank" rel="noopener noreferrer">${esc(t.src.replace(/^https?:\/\/(www\.)?/i, '').slice(0, 60))}</a>` : esc(t.src);
+function vTerminos(){
+  const all = terminos(), cats = [...new Set(all.map(t => t.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  if (TM.cat && !cats.includes(TM.cat)) TM.cat = '';
+  const dom = all.filter(t => tmStat(t.key).box >= 3).length;
+  const tabs = [['buscar','Buscar','search'],['flash','Flashcards','cards'],['quiz','Quiz','pulse'],['mc','Opción múltiple','quiz']];
+  const body = ({ buscar:tmBuscar, flash:tmFlash, quiz:tmQuiz, mc:tmMC }[TM.tab] || tmBuscar)();
+  return `<div class="stack">
+    <div class="row between" style="align-items:flex-end"><div><h1>Terminología</h1><p class="small muted">${all.length} ${all.length === 1 ? 'término' : 'términos'} generales${all.length ? ` · dominás ${dom}` : ''}</p></div>
+      <div class="row">${esAdmin() ? `<button class="btn" data-act="tm-import">${I('upload',16)}Importar lista</button>` : ''}<button class="btn pri" data-act="tm-add">${I('plus',16)}Agregar término</button></div></div>
+    <div class="row between"><div class="tabs" role="tablist">${tabs.map(([k, l, i]) => `<button role="tab" aria-selected="${TM.tab === k}" data-act="tm-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
+      ${cats.length ? `<select id="tm-cat" data-change="tm-cat" style="width:auto" aria-label="Filtrar por categoría"><option value="">Todas las categorías</option>${cats.map(c => `<option value="${esc(c)}" ${TM.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}</div>
+    ${body}
+  </div>`;
+}
+function tmBuscar(){
+  return `<div class="stack" style="gap:12px">
+    <div class="search" style="max-width:none">${I('search',18)}<input type="text" id="tm-q" value="${esc(TM.q)}" placeholder="Buscar un término o una palabra de la definición…" aria-label="Buscar un término" autocomplete="off"></div>
+    <div id="tm-list">${tmLista()}</div></div>`;
+}
+function tmLista(){
+  const q = norm(TM.q), base = terminos().filter(t => !TM.cat || t.cat === TM.cat);
+  const res = q ? base.filter(t => norm(t.term).includes(q) || norm(t.def).includes(q)).sort((a, b) => (norm(b.term) === q) - (norm(a.term) === q) || norm(b.term).startsWith(q) - norm(a.term).startsWith(q)) : base;
+  const exacto = q && terminos().some(t => norm(t.term) === q), shown = res.slice(0, 200);
+  const nuevo = TM.q.trim();
+  const add = q && !exacto ? `<div class="card row between" style="gap:12px;border-style:dashed"><div style="min-width:0;flex:1 1 220px"><b>¿No encontrás “${esc(nuevo)}”?</b><p class="small muted">Agregalo con su definición y queda para buscarlo y practicarlo.</p></div><button class="btn pri" data-act="tm-add" data-term="${esc(nuevo)}">${I('plus',16)}Agregar “${esc(nuevo.length > 24 ? nuevo.slice(0, 24) + '…' : nuevo)}”</button></div>` : '';
+  if (!base.length && !q) return '<div class="empty">Todavía no hay términos cargados. Agregá el primero con “Agregar término”.</div>';
+  return `${add}<p class="small muted" style="margin:${add ? '12px' : '0'} 0 8px">${q ? `${res.length} ${res.length === 1 ? 'resultado' : 'resultados'}` : `${base.length} ${base.length === 1 ? 'término' : 'términos'}`}${shown.length < res.length ? ` · mostrando los primeros ${shown.length}: buscá para encontrar el resto` : ''}</p>
+    <div class="stack" style="gap:8px">${shown.map(t => { const st = tmStat(t.key);
+      return `<div class="doc" style="align-items:flex-start"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b>${esc(t.term)}</b>${t.cat ? `<span class="pill p-past">${esc(t.cat)}</span>` : ''}${t.global ? '' : '<span class="pill p-warm">Propio</span>'}${st.ok + st.bad ? `<span class="small muted">${st.ok} bien · ${st.bad} mal</span>` : ''}</div>
+        <p class="small" style="margin-top:4px">${esc(t.def)}</p>${t.src ? `<p class="small muted" style="margin-top:2px">Fuente: ${tmFuente(t)}</p>` : ''}</div>
+        ${!t.global || esAdmin() ? `<button class="icon-btn" data-act="tm-edit" data-key="${t.key}" aria-label="Editar ${esc(t.term)}">${I('edit',15)}</button>` : ''}</div>`; }).join('')}</div>`;
+}
+function tmHead(){
+  return `<div class="row between"><div class="row"><div class="tabs" style="width:max-content"><button aria-selected="${TM.dir === 'td'}" data-act="tm-dir" data-d="td">Término → definición</button><button aria-selected="${TM.dir === 'dt'}" data-act="tm-dir" data-d="dt">Definición → término</button></div>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="tm-fall" data-change="tm-fall" ${TM.soloFallados ? 'checked' : ''}>Solo los que fallé</label></div>
+    <div class="score"><div class="s-ok"><b>${TM.ok}</b>correctas</div><div class="s-bad"><b>${TM.bad}</b>incorrectas</div><div><b>${pct(TM.ok, TM.ok + TM.bad)}%</b>aciertos</div></div></div>`;
+}
+const tmVacio = () => `<div class="empty">${TM.soloFallados ? 'No tenés términos fallados en esta selección.' : 'Todavía no hay términos para practicar en esta selección.'}</div>`;
+function tmFlash(){
+  const pool = tmPool();
+  if (!TM.queue.length || TM.queue.some(k => !tmFind(k))){ TM.queue = shuffle(pool).sort((a, b) => tmStat(a.key).box - tmStat(b.key).box).map(t => t.key); TM.i = 0; TM.flipped = false; }
+  if (!pool.length) return `<div class="stack">${tmHead()}${tmVacio()}</div>`;
+  if (TM.i >= TM.queue.length) return `<div class="stack">${tmHead()}<div class="card stack" style="align-items:center;text-align:center;padding:32px"><h2>¡Terminaste la ronda!</h2><p class="muted">Los que no sabías van a aparecer primero la próxima vez.</p><button class="btn pri" data-act="tm-restart">Repasar de nuevo</button></div></div>`;
+  const t = tmFind(TM.queue[TM.i]), st = tmStat(t.key), cat = esc(t.cat || 'Terminología');
+  const front = TM.dir === 'td' ? `<div class="big">${esc(t.term)}</div>` : `<div class="def">${esc(t.def)}</div>`;
+  const back = TM.dir === 'td' ? `<div class="def">${esc(t.def)}</div>` : `<div class="big">${esc(t.term)}</div>`;
+  return `<div class="stack">${tmHead()}
+    <div class="flip ${TM.flipped ? 'on' : ''}" id="tmflip"><div class="flip-in" data-act="tm-flip" role="button" tabindex="0" aria-label="Dar vuelta la tarjeta">
+      <div class="face"><div class="corner"><span>${cat}</span><span class="num">${TM.i + 1}/${TM.queue.length}</span></div>${front}<span class="small muted row" style="gap:6px">${I('flip',14)}Tocá para dar vuelta</span></div>
+      <div class="face back"><div class="corner"><span>${cat}</span><span class="boxes" title="Caja ${st.box} de 5">${[1,2,3,4,5].map(n => `<i class="${n <= st.box ? 'on' : ''}"></i>`).join('')}</span></div>${back}</div></div></div>
+    <div class="row" style="justify-content:center">${TM.flipped ? `<button class="btn" style="min-width:150px;color:var(--danger)" data-act="tm-ans" data-ok="0">${I('x',16)}No la sabía</button><button class="btn pri" style="min-width:150px" data-act="tm-ans" data-ok="1">${I('check',16)}La sabía</button>` : `<button class="btn pri" style="min-width:200px" data-act="tm-flip">${I('flip',16)}Ver respuesta</button>`}</div></div>`;
+}
+function tmNuevoQuiz(){
+  const pool = tmPool(); if (!pool.length) return null;
+  const cand = shuffle(pool).sort((a, b) => (tmStat(b.key).bad - tmStat(b.key).ok) - (tmStat(a.key).bad - tmStat(a.key).ok)).slice(0, Math.max(3, Math.ceil(pool.length / 2)));
+  return { key: cand[Math.floor(Math.random() * cand.length)].key, answer:'', res:null };
+}
+function tmQuiz(){
+  if (!TM.quiz || !tmFind(TM.quiz.key)) TM.quiz = tmNuevoQuiz();
+  if (!TM.quiz) return `<div class="stack">${tmHead()}${tmVacio()}</div>`;
+  const q = TM.quiz, t = tmFind(q.key);
+  const ask = TM.dir === 'td' ? `<p class="eyebrow">Escribí la definición de</p><div class="big">${esc(t.term)}</div>` : `<p class="eyebrow">¿Qué término corresponde a esta definición?</p><p style="margin-top:6px">${esc(t.def)}</p>`;
+  const fb = !q.res ? '' : `<div class="fb ${q.res.ok ? 'ok' : 'bad'}"><h3>${q.res.ok ? 'Correcta' : 'Incorrecta'}</h3><p class="small">${esc(q.res.detail)}</p>
+      ${!q.res.ok && q.res.miss && q.res.miss.length ? `<p class="small" style="margin-top:4px">Te faltó mencionar: <b>${q.res.miss.map(esc).join(', ')}</b></p>` : ''}
+      <p class="small" style="margin-top:8px"><b>Respuesta de referencia:</b> ${esc(TM.dir === 'td' ? t.def : t.term)}</p></div>
+    <div class="row">${!q.res.ok ? `<button class="btn sm" data-act="tm-override">${I('check',14)}Estaba bien, contala como correcta</button>` : ''}<button class="btn pri" data-act="tm-next" style="margin-left:auto">Siguiente${I('next',16)}</button></div>`;
+  return `<div class="stack">${tmHead()}<div class="stack" style="max-width:760px">
+    <div class="prompt"><p class="small muted" style="margin-bottom:8px">${esc(t.cat || 'Terminología')}</p>${ask}</div>
+    <form class="stack" style="gap:10px" data-form="tm-quiz">
+      ${TM.dir === 'td' ? `<textarea id="tm-qa" placeholder="Escribí la definición con tus palabras…" ${q.res ? 'disabled' : ''}>${esc(q.answer)}</textarea>` : `<input type="text" id="tm-qa" placeholder="Escribí el término…" value="${esc(q.answer)}" ${q.res ? 'disabled' : ''} autocomplete="off">`}
+      ${q.res ? '' : `<div class="row"><button class="btn pri" type="submit">Comprobar</button><button class="btn ghost" type="button" data-act="tm-skip">No sé, mostrame</button></div>`}
+    </form>${fb}</div></div>`;
+}
+function tmNuevoMC(){
+  const pool = tmPool(), all = terminos(); if (!pool.length || all.length < 4) return null;
+  const t = shuffle(pool).sort((a, b) => tmStat(a.key).box - tmStat(b.key).box)[Math.floor(Math.random() * Math.min(5, pool.length))];
+  const distinto = x => x.key !== t.key && norm(x.def) !== norm(t.def) && norm(x.term) !== norm(t.term);
+  const mismos = shuffle(all.filter(x => distinto(x) && x.cat && x.cat === t.cat)), otros = shuffle(all.filter(x => distinto(x) && !(x.cat && x.cat === t.cat)));
+  const elegidos = []; [...mismos, ...otros].forEach(x => { if (elegidos.length < 3 && !elegidos.some(y => norm(y.def) === norm(x.def) || norm(y.term) === norm(x.term))) elegidos.push(x); });
+  if (elegidos.length < 3) return null;
+  return { key: t.key, opts: shuffle([t.key, ...elegidos.map(x => x.key)]), pick: null };
+}
+function tmMC(){
+  if (!TM.mc || !tmFind(TM.mc.key) || TM.mc.opts.some(k => !tmFind(k))) TM.mc = tmNuevoMC();
+  if (!TM.mc) return `<div class="stack">${tmHead()}${terminos().length < 4 ? '<div class="empty">Para la opción múltiple hacen falta al menos 4 términos cargados.</div>' : tmVacio()}</div>`;
+  const m = TM.mc, t = tmFind(m.key);
+  const ask = TM.dir === 'td' ? `<p class="eyebrow">¿Qué significa?</p><div class="big">${esc(t.term)}</div>` : `<p class="eyebrow">¿Qué término es?</p><p style="margin-top:6px">${esc(t.def)}</p>`;
+  return `<div class="stack">${tmHead()}<div class="stack" style="max-width:760px">
+    <div class="prompt"><p class="small muted" style="margin-bottom:8px">${esc(t.cat || 'Terminología')}</p>${ask}</div>
+    <div class="stack" style="gap:8px">${m.opts.map((k, i) => { const o = tmFind(k), cls = m.pick === null ? '' : k === m.key ? 'right' : k === m.pick ? 'wrong' : '';
+      return `<button class="opt ${cls}" data-act="tm-mc-pick" data-k="${k}" ${m.pick !== null ? 'disabled' : ''}><span class="k">${'ABCD'[i]}</span>${esc(TM.dir === 'td' ? o.def : o.term)}</button>`; }).join('')}</div>
+    ${m.pick !== null ? `<div class="fb ${m.pick === m.key ? 'ok' : 'bad'}"><h3>${m.pick === m.key ? 'Correcta' : 'Incorrecta'}</h3><p class="small"><b>${esc(t.term)}:</b> ${esc(t.def)}</p></div><div class="row"><button class="btn pri" data-act="tm-mc-next" style="margin-left:auto">Siguiente${I('next',16)}</button></div>` : ''}
+  </div></div>`;
+}
+function tmForm(t, termIni){
+  const edit = !!t, cats = [...new Set(terminos().map(x => x.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  modal(`<div class="row between"><h2>${edit ? 'Editar término' : 'Agregar término'}</h2>${closeX()}</div>
+    <form class="stack" style="gap:12px" data-form="tm-term" data-key="${edit ? t.key : ''}">
+      <label class="f">Término<input type="text" id="tf-t" required value="${esc(edit ? t.term : termIni || '')}" placeholder="Ej: Hematuria"></label>
+      <label class="f">Definición<textarea id="tf-d" required style="min-height:90px" placeholder="Ej: Presencia de sangre en la orina.">${esc(edit ? t.def : '')}</textarea></label>
+      <div class="grid g2" style="gap:12px"><label class="f">Categoría (opcional)<input type="text" id="tf-c" list="tf-cats" value="${esc(edit ? t.cat : '')}" placeholder="Ej: Signos y síntomas"></label>
+      <label class="f">Fuente (opcional)<input type="text" id="tf-s" value="${esc(edit ? t.src : '')}" placeholder="Libro, apunte o link"></label></div>
+      <datalist id="tf-cats">${cats.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+      ${!edit && esAdmin() ? '<label class="row small" style="gap:8px"><input type="checkbox" id="tf-g" checked>Agregarlo para todas las cuentas</label>' : ''}
+      <p class="small muted">${edit ? (t.global ? 'Es un término compartido: el cambio se ve en todas las cuentas.' : 'Es un término propio: solo lo ves vos.') : esAdmin() ? 'Si desmarcás la opción, queda solo en tu cuenta.' : 'Queda guardado en tu cuenta.'}</p>
+      <p class="small" id="tf-err" style="color:var(--danger)"></p>
+      <div class="row" style="justify-content:space-between">${edit ? `<button class="btn" type="button" style="color:var(--danger)" data-act="tm-del" data-key="${t.key}">${I('trash',16)}Eliminar</button>` : '<span></span>'}<div class="row"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></div></form>`);
+}
+function tmImportForm(){
+  modal(`<div class="row between"><h2>Importar lista de términos</h2>${closeX()}</div>
+    <form class="stack" style="gap:12px" data-form="tm-import">
+      <p class="small muted">Un término por línea, separado de su definición con dos puntos, un guion entre espacios o una tabulación. Se cargan para todas las cuentas; los que ya existen se saltean.</p>
+      <textarea id="ti-x" required style="min-height:200px" placeholder="Hematuria: presencia de sangre en la orina.&#10;Poliuria - aumento del volumen de orina en 24 horas."></textarea>
+      <div class="grid g2" style="gap:12px"><label class="f">Categoría para todos (opcional)<input type="text" id="ti-c" placeholder="Ej: Signos y síntomas"></label><label class="f">Fuente (opcional)<input type="text" id="ti-s" placeholder="Libro, apunte o link"></label></div>
+      <p class="small" id="ti-msg" style="color:var(--danger)"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Importar</button></div></form>`);
+}
+// "Término: definición" / "Término - definición" / "Término<TAB>definición"; un guion pegado al término (sufijos como -itis) no separa
+const tmParse = txt => txt.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+  const m = l.replace(/^(?:[•*·]\s*|-\s+|\d+[.)]\s+)/, '').match(/^(.+?)\s*(?::|\t|\s[-–—]\s)\s*(.+)$/);
+  return m ? { term: m[1].trim(), definition: m[2].trim() } : null;
+}).filter(x => x && x.term && x.definition);
+Object.assign(A, {
+  'tm-tab': d => { TM.tab = d.tab; render(); },
+  'tm-add': d => tmForm(null, d.term ? d.term.charAt(0).toUpperCase() + d.term.slice(1) : ''),
+  'tm-edit': d => { const t = tmFind(d.key); if (t) tmForm(t); },
+  'tm-import': () => tmImportForm(),
+  'tm-dir': d => { TM.dir = d.d; tmReset(); render(); },
+  'tm-flip': () => { TM.flipped = !TM.flipped; const f = $('#tmflip'); if (f) f.classList.toggle('on', TM.flipped); setTimeout(render, 420); },
+  'tm-ans': d => { const k = TM.queue[TM.i]; if (!k) return; tmMarcar(k, d.ok === '1'); TM.i++; TM.flipped = false; render(); },
+  'tm-restart': () => { tmReset(); render(); },
+  'tm-skip': () => { const q = TM.quiz; if (!q || q.res) return; q.prev = { ...tmStat(q.key) }; q.res = { ok:false, detail:'La dejaste en blanco.' }; tmMarcar(q.key, false); render(); },
+  'tm-next': () => { TM.quiz = tmNuevoQuiz(); render(); setTimeout(() => { const x = $('#tm-qa'); x && x.focus(); }, 0); },
+  'tm-override': () => { const q = TM.quiz; if (!q || !q.res || q.res.ok || !q.prev) return;
+    S.glosario.stats[q.key] = { ok: q.prev.ok + 1, bad: q.prev.bad, box: Math.min(5, q.prev.box + 1) };
+    const h = S.glosario.hist[S.glosario.hist.length - 1]; if (h) h.ok = true;
+    TM.bad--; TM.ok++; q.res = { ok:true, detail:'La marcaste como correcta.' }; save(); render(); },
+  'tm-mc-pick': d => { const m = TM.mc; if (!m || m.pick !== null) return; m.pick = d.k; tmMarcar(m.key, d.k === m.key); render(); },
+  'tm-mc-next': () => { TM.mc = tmNuevoMC(); render(); },
+  'tm-del': async (d, el) => {
+    const t = tmFind(d.key); if (!t) return;
+    if (!armed(el, 'Sí, eliminar término')) return;
+    try {
+      if (t.global){ el.disabled = true; await GL.api.borrar(t.id); GL.global = GL.global.filter(x => x.id !== t.id); }
+      else S.glosario.propios = S.glosario.propios.filter(x => x.id !== t.id);
+      delete S.glosario.stats[t.key]; save(); tmInvalidar(); tmReset(); closeModal(); render(); toast('Término eliminado.');
+    } catch (e) { const m = $('#tf-err'); if (m) m.textContent = e.message || 'No se pudo eliminar.'; el.disabled = false; }
+  }
+});
+document.addEventListener('change', e => {
+  const k = e.target.dataset.change;
+  if (k === 'tm-cat'){ TM.cat = e.target.value; tmReset(); render(); }
+  if (k === 'tm-fall'){ TM.soloFallados = e.target.checked; tmReset(); render(); }
+});
+document.addEventListener('input', e => { if (e.target.id === 'tm-q'){ TM.q = e.target.value; const l = $('#tm-list'); if (l) l.innerHTML = tmLista(); } });
+document.addEventListener('submit', async e => {
+  const f = e.target, k = f.dataset.form; if (!['tm-quiz', 'tm-term', 'tm-import'].includes(k)) return;
+  const val = id => { const el = $(id); return el ? el.value.trim() : ''; };
+  if (k === 'tm-quiz'){
+    const q = TM.quiz; if (!q || q.res) return; q.answer = $('#tm-qa').value; if (!q.answer.trim()) return;
+    const t = tmFind(q.key); q.prev = { ...tmStat(q.key) }; q.res = gradeQuiz({ term: t.term, def: t.def }, q.answer, TM.dir); tmMarcar(q.key, q.res.ok); render();
+  }
+  if (k === 'tm-term'){
+    const term = val('#tf-t'), def = val('#tf-d'), cat = val('#tf-c'), src = val('#tf-s'), key = f.dataset.key, err = $('#tf-err');
+    if (!term || !def) return;
+    const dup = terminos().find(x => norm(x.term) === norm(term) && x.key !== key);
+    if (dup){ err.textContent = `“${dup.term}” ya está cargado${dup.global ? '' : ' en tus términos'}. Buscalo para verlo o editarlo.`; return; }
+    const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+    try {
+      if (key){
+        const t = tmFind(key);
+        if (t.global){ const row = await GL.api.editar(t.id, { term, definition: def, category: cat, source: src }); Object.assign(GL.global.find(x => x.id === t.id), row); }
+        else Object.assign(S.glosario.propios.find(x => x.id === t.id), { term, def, cat, src });
+      } else if ($('#tf-g') && $('#tf-g').checked && GL.api){ const row = await GL.api.agregar({ term, definition: def, category: cat, source: src }); GL.global.push(row); }
+      else S.glosario.propios.push({ id: uid(), term, def, cat, src });
+      save(); tmInvalidar(); track('terminologia', key ? 'editar' : 'agregar'); closeModal(); render(); toast(key ? 'Término actualizado.' : 'Término agregado.');
+    } catch (ex) { err.textContent = ex.message || 'No se pudo guardar.'; btn.disabled = false; }
+  }
+  if (k === 'tm-import'){
+    const msg = $('#ti-msg'), cat = val('#ti-c'), src = val('#ti-s'), filas = tmParse($('#ti-x').value).map(x => ({ ...x, category: cat, source: src }));
+    if (!filas.length){ msg.textContent = 'No encontré líneas con el formato “término: definición”.'; return; }
+    if (!GL.api) return;
+    const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Importando…';
+    try {
+      const nuevos = await GL.api.importar(filas); GL.global.push(...nuevos); tmInvalidar(); track('terminologia', 'importar');
+      closeModal(); render(); toast(`Se agregaron ${nuevos.length} ${nuevos.length === 1 ? 'término' : 'términos'}${filas.length - nuevos.length ? ` (${filas.length - nuevos.length} ${filas.length - nuevos.length === 1 ? 'ya estaba' : 'ya estaban'})` : ''}.`);
+    } catch (ex) { msg.textContent = ex.message || 'No se pudo importar.'; btn.disabled = false; btn.textContent = 'Importar'; }
+  }
+});
+
 /* ---------- cuenta, carga manual de preguntas y panel de uso ---------- */
 function renderCuenta(){
   const c = $('#cuenta'), u = HOST.user; if (!c) return;
@@ -2135,7 +2353,7 @@ Object.assign(A, {
 });
 
 // Acceso para pruebas automáticas; no existe en la versión publicada
-if (import.meta.env.DEV) window.__app = { go, render, A, get S(){ return S; }, get P(){ return P; }, get HS(){ return HS; }, set HS(v){ HS = v; }, get SIM(){ return SIM; }, set SIM(v){ SIM = v; }, startSim, finishSim, startSession, simPool, errTrack, errFind, validErrores, studyPlan, pomoTick, pomoSet, PM, asistBuckets, clsRowHoy, notifs };
+if (import.meta.env.DEV) window.__app = { go, render, A, get S(){ return S; }, get P(){ return P; }, get HS(){ return HS; }, set HS(v){ HS = v; }, get SIM(){ return SIM; }, set SIM(v){ SIM = v; }, startSim, finishSim, startSession, simPool, errTrack, errFind, validErrores, studyPlan, pomoTick, pomoSet, PM, asistBuckets, clsRowHoy, notifs, TM, terminos, GL };
 
 /* ---------- inicio ---------- */
 document.body.classList.toggle('no-ia', !IA);
