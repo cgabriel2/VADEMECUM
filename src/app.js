@@ -771,10 +771,11 @@ function search(qs){
     else if (b.texto && has(b.texto)){ const i = norm(b.texto).indexOf(q); out.push({ tag:'En apunte', t:b.titulo, s:'…' + b.texto.slice(Math.max(0, i - 30), i + 70) + '…', go:['materia', b.materiaId, 'biblio'] }); } });
   S.eventos.forEach(e => (has(e.titulo) || has(e.tipo + ' ' + mat(e.materiaId).nombre)) && out.push({ tag:e.tipo === 'TP' ? 'TP' : 'Examen', t:e.tipo === 'TP' ? e.titulo : `${e.tipo} de ${mat(e.materiaId).nombre}`, s:fmtLong(e.fecha), go:['evento', e.id] }));
   S.cards.forEach(c => (has(c.term) || has(c.def)) && out.push({ tag:'Término', t:c.term, s:c.def, card:c.id }));
-  terminos().forEach(t => has(t.term) && out.push({ tag:'Terminología', t:t.term, s:t.def, tm:t.key }));
   ['farm','enf'].forEach(k => { const T = FI_TIPOS[k]; S.fichas[T.key].forEach(x => (has(x.nombre) || has(x[T.sub] || '')) && out.push({ tag: k === 'farm' ? 'Fármaco' : 'Enfermedad', t:x.nombre, s:x[T.sub] || '', ficha:x.id, fk:k })); });
   S.mnemos.forEach(x => (has(x.titulo) || has(x.texto)) && out.push({ tag:'Mnemotecnia', t:x.titulo, s:x.texto, mne:true }));
-  return out.slice(0, 16);
+  // la terminología general tiene miles de términos: van al final, los que empiezan igual primero y como mucho 6
+  const tms = terminos().filter(t => t.tn.includes(q)).sort((a, b) => (b.tn === q) - (a.tn === q) || b.tn.startsWith(q) - a.tn.startsWith(q));
+  return [...out.slice(0, 16 - Math.min(6, tms.length)), ...tms.slice(0, 6).map(t => ({ tag:'Terminología', t:t.term, s:t.def, tm:t.key }))];
 }
 let lastRes = [];
 $('#q').addEventListener('input', e => {
@@ -2064,8 +2065,16 @@ function terminos(){
   if (tmCache) return tmCache;
   const g = GL.global.map(x => ({ key:'g:' + x.id, id:x.id, term:x.term, def:x.definition, cat:x.category || '', src:x.source || '', global:true }));
   const p = (S.glosario.propios || []).map(x => ({ key:'p:' + x.id, id:x.id, term:x.term, def:x.def, cat:x.cat || '', src:x.src || '', global:false }));
-  return tmCache = [...g, ...p].sort((a, b) => tmClave(a.term).localeCompare(tmClave(b.term), 'es', { sensitivity:'base' }));
+  // con miles de términos, el texto normalizado se calcula una sola vez para que buscar sea instantáneo
+  return tmCache = [...g, ...p].map(t => ({ ...t, tn: norm(t.term), dn: norm(t.def) }))
+    .sort((a, b) => tmClave(a.term).localeCompare(tmClave(b.term), 'es', { sensitivity:'base' }));
 }
+// La lista compartida llega actualizada de la nube después de abrir la app (se abre con la guardada)
+HOST.alGlosario = lista => {
+  GL.global = lista.slice(); tmInvalidar();
+  const escribiendo = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (R.view === 'terminos' && !escribiendo && $('#modal').hidden) render();
+};
 const tmFind = k => terminos().find(t => t.key === k);
 const tmStat = k => S.glosario.stats[k] || { ok:0, bad:0, box:1 };
 const tmPool = () => terminos().filter(t => (!TM.cat || t.cat === TM.cat) && (!TM.soloFallados || tmStat(t.key).bad > tmStat(t.key).ok));
@@ -2098,8 +2107,8 @@ function tmBuscar(){
 }
 function tmLista(){
   const q = norm(TM.q), base = terminos().filter(t => !TM.cat || t.cat === TM.cat);
-  const res = q ? base.filter(t => norm(t.term).includes(q) || norm(t.def).includes(q)).sort((a, b) => (norm(b.term) === q) - (norm(a.term) === q) || norm(b.term).startsWith(q) - norm(a.term).startsWith(q)) : base;
-  const exacto = q && terminos().some(t => norm(t.term) === q), shown = res.slice(0, 200);
+  const res = q ? base.filter(t => t.tn.includes(q) || t.dn.includes(q)).sort((a, b) => (b.tn === q) - (a.tn === q) || b.tn.startsWith(q) - a.tn.startsWith(q) || b.tn.includes(q) - a.tn.includes(q)) : base;
+  const exacto = q && terminos().some(t => t.tn === q), shown = res.slice(0, 200);
   const nuevo = TM.q.trim();
   const add = q && !exacto ? `<div class="card row between" style="gap:12px;border-style:dashed"><div style="min-width:0;flex:1 1 220px"><b>¿No encontrás “${esc(nuevo)}”?</b><p class="small muted">Agregalo con su definición y queda para buscarlo y practicarlo.</p></div><button class="btn pri" data-act="tm-add" data-term="${esc(nuevo)}">${I('plus',16)}Agregar “${esc(nuevo.length > 24 ? nuevo.slice(0, 24) + '…' : nuevo)}”</button></div>` : '';
   if (!base.length && !q) return '<div class="empty">Todavía no hay términos cargados. Agregá el primero con “Agregar término”.</div>';

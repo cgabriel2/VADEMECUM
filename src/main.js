@@ -179,28 +179,33 @@ async function entrar(user){
   } else if (fila){ datos = fila.data; ultimoSync = Date.parse(fila.updated_at); }
   else if (cache) datos = cache;
   else inicio = await verBienvenida(perfil.nombre);
-  const glosario = await cargarGlosario();
+  // La terminología pesa bastante: si ya hay una copia guardada se abre con esa y se actualiza por detrás
+  const guardado = glosarioGuardado(), fresco = cargarGlosario();
+  const glosario = guardado || await fresco || [];
   await iniciarUso();
   track('ingreso', dispositivo());
   arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio, glosario);
+  if (guardado) fresco.then(lista => { if (lista && window.__VDM__ && window.__VDM__.alGlosario) window.__VDM__.alGlosario(lista); });
 }
 
 /* ---------- terminología compartida (la cargan las administradoras) ---------- */
 const GLOS_CACHE = 'vdm-glosario';
 const CAMPOS_TERMINO = 'id, term, definition, category, source';
+const glosarioGuardado = () => { try { const g = JSON.parse(localStorage.getItem(GLOS_CACHE)); return Array.isArray(g) && g.length ? g : null; } catch (e) { return null; } };
+// Trae todos los términos (la nube entrega de a 1000): la primera página dice cuántos hay y el resto se pide en paralelo.
+// Devuelve null si no hay conexión.
 async function cargarGlosario(){
+  const PAG = 1000, pagina = (desde, contar) => supabase.from('glossary_terms').select(CAMPOS_TERMINO, contar ? { count: 'exact' } : undefined).order('id').range(desde, desde + PAG - 1);
   try {
-    const todos = [];
-    for (let desde = 0; ; desde += 1000){
-      const { data, error } = await supabase.from('glossary_terms').select(CAMPOS_TERMINO).order('term').range(desde, desde + 999);
-      if (error) throw error;
-      todos.push(...data); if (data.length < 1000) break;
-    }
+    const primera = await pagina(0, true);
+    if (primera.error) throw primera.error;
+    const total = primera.count ?? primera.data.length, resto = [];
+    for (let desde = PAG; desde < total; desde += PAG) resto.push(pagina(desde));
+    const todos = [...primera.data];
+    for (const r of await Promise.all(resto)){ if (r.error) throw r.error; todos.push(...r.data); }
     try { localStorage.setItem(GLOS_CACHE, JSON.stringify(todos)); } catch (e) {}
     return todos;
-  } catch (e) {
-    try { return JSON.parse(localStorage.getItem(GLOS_CACHE)) || []; } catch (e2) { return []; }
-  }
+  } catch (e) { return null; }
 }
 const limpiarTermino = t => ({ term: String(t.term || '').trim(), definition: String(t.definition || '').trim(), category: (t.category || '').trim() || null, source: (t.source || '').trim() || null });
 const glosario = {
