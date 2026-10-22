@@ -322,6 +322,10 @@ if (S.v === 2) addV3(S); // suma lo de la versión 3 sin tocar lo que ya se carg
 if (nuevo) save();
 // Terminología: términos propios de la cuenta y progreso de práctica (los compartidos vienen de la base)
 if (!S.glosario) S.glosario = { propios: [], stats: {}, hist: [] };
+// Fichas generales (anatomía, microbiología…), carpetas y plantillas de campos de cada estudiante
+if (!S.fichas.generales) S.fichas.generales = [];
+if (!S.carpetas) S.carpetas = [];
+if (!S.plantillas) S.plantillas = [];
 
 /* ---------- consultas ---------- */
 const mat = id => S.materias.find(m => m.id === id);
@@ -389,7 +393,7 @@ function calendar(){
     const label = evs.length ? `${d.getDate()} de ${MES[d.getMonth()]}: ` + evs.map(e => e.tipo + ' de ' + mat(e.materiaId).nombre).join(', ') : `${d.getDate()} de ${MES[d.getMonth()]}`;
     cells += `<button class="${cls}" ${evs.length ? `data-act="cal-day" data-date="${k}"` : 'tabindex="-1"'} aria-label="${esc(label)}">${d.getDate()}<span class="dots">${evs.map(e => `<i class="dot ${evStatus(e)}"></i>`).join('')}</span></button>`;
   }
-  return `<div class="card">
+  return `<div class="card t-venice">
     <div class="card-h"><h2 style="text-transform:capitalize">${MES[mo]} ${y}</h2>
       <div class="row" style="gap:4px"><button class="btn sm ghost" data-act="cal-nav" data-d="-1" aria-label="Mes anterior">${I('back',16)}</button>
       <button class="btn sm" data-act="cal-nav" data-d="0">Hoy</button>
@@ -420,20 +424,20 @@ function vInicio(){
       <button class="btn sm" data-act="start-cuest" data-m="${nextExam.materiaId}" data-units="${nextExam.unidades.join(',')}">${I('quiz',15)}Repasar con preguntas</button></div>`; }
   const h = new Date().getHours();
   return `<div class="stack">
-    <div class="row between" style="align-items:flex-end"><div><p class="eyebrow">${fmtLong(iso(TODAY))}</p><h1>${h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches'}</h1></div>
+    <div class="row between pg-head" style="align-items:flex-end"><div><p class="eyebrow">${fmtLong(iso(TODAY))}</p><h1>${h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches'}</h1></div>
       <button class="btn" data-act="pomo-open">${I('timer',16)}Pomodoro</button></div>
     ${urgent.length ? `<button class="alert" data-act="go" data-view="evento" data-id="${urgent[0].id}"><span class="num">${urgent.length}</span><span style="flex:1">${urgent.length === 1 ? 'fecha vence' : 'fechas vencen'} en los próximos 5 días: ${urgent.map(e => esc(e.tipo === 'TP' ? 'TP de ' + mat(e.materiaId).nombre : e.tipo + ' de ' + mat(e.materiaId).nombre)).join(', ')}</span>${I('next',18)}</button>` : ''}
     <div class="grid g2">${hoyCard()}${hoyFacuCard()}</div>
     <div class="grid g-home">
       ${calendar()}
       <div class="stack">
-        <div class="card"><div class="card-h"><h2>Próximas fechas</h2><span class="small muted">${up.length} pendientes</span></div>
+        <div class="card t-rock crema"><div class="card-h"><h2>Próximas fechas</h2><span class="small muted">${up.length} pendientes</span></div>
           <div class="stack" style="gap:8px">${up.slice(0,4).map(evRow).join('')}${recent.map(evRow).join('')}</div></div>
       </div>
     </div>
     <div class="grid g2">
-      <div class="card"><div class="card-h"><h2>Plan de hoy</h2><span class="pill p-warm">${I('spark',12)}Automático</span></div>${planHtml}</div>
-      <div class="card"><div class="card-h"><h2>Tus materias</h2><button class="btn sm ghost" data-act="go" data-view="materias">Ver todas</button></div>
+      <div class="card t-rock crema"><div class="card-h"><h2>Plan de hoy</h2><span class="pill p-warm">${I('spark',12)}Automático</span></div>${planHtml}</div>
+      <div class="card t-rock crema"><div class="card-h"><h2>Tus materias</h2><button class="btn sm ghost" data-act="go" data-view="materias">Ver todas</button></div>
         <div class="stack" style="gap:12px">${cursando().map(m => { const p = progMat(m.id); return `<button class="row" style="border:0;background:none;padding:0;text-align:left;flex-wrap:nowrap" data-act="go" data-view="materia" data-id="${m.id}">
           <span class="mat-ico" style="background:${matColor(m)}">${esc(m.nombre[0])}</span>
           <span style="flex:1;min-width:0"><span class="row between"><b>${esc(m.nombre)}${m.estado === 'regular' ? ' <span class="small muted" style="font-weight:500">· final pendiente</span>' : ''}</b><span class="num small">${pct(p.done,p.total)}%</span></span><span class="bar" style="display:block;margin-top:6px"><i style="width:${pct(p.done,p.total)}%"></i></span></span></button>`; }).join('') || `<p class="small muted">Todavía no cargaste materias.</p><button class="btn sm pri" style="align-self:flex-start" data-act="add-materia">${I('plus',14)}Agregar materia</button>`}</div></div>
@@ -451,15 +455,15 @@ function vMaterias(){
   const list = S.materias.filter(m => matFilter === 'todas' || m.estado === matFilter).sort((a,b) => a.anio - b.anio);
   return `<div class="stack">
     <div class="row between"><h1>Materias</h1><button class="btn pri" data-act="add-materia">${I('plus',16)}Agregar materia</button></div>
-    <div class="tabs" role="tablist">${[['cursando','Cursando'],['regular','Regulares'],['aprobada','Aprobadas'],['pendiente','Pendientes'],['todas','Todas']].map(([k,l]) => `<button role="tab" aria-selected="${matFilter===k}" data-act="mat-filter" data-f="${k}">${l}</button>`).join('')}</div>
+    <div class="tabs t-rock" role="tablist">${[['cursando','Cursando'],['regular','Regulares'],['aprobada','Aprobadas'],['pendiente','Pendientes'],['todas','Todas']].map(([k,l]) => `<button role="tab" aria-selected="${matFilter===k}" data-act="mat-filter" data-f="${k}">${l}</button>`).join('')}</div>
     ${list.length ? `<div class="grid g3">${list.map(m => { const p = progMat(m.id), next = S.eventos.filter(e => e.materiaId === m.id && !e.hecho && daysTo(e.fecha) >= 0).sort((a,b) => a.fecha.localeCompare(b.fecha))[0];
-      return `<div class="card mat" data-act="go" data-view="materia" data-id="${m.id}" role="button" tabindex="0">
+      return `<div class="card mat t-rock" data-act="go" data-view="materia" data-id="${m.id}" role="button" tabindex="0">
         <div class="row between" style="flex-wrap:nowrap"><span class="mat-ico" style="background:${matColor(m)}">${esc(m.nombre[0])}</span>${m.estado === 'aprobada' ? `<span class="pill p-ok">${I('check',12)}Aprobada${m.nota ? ' · ' + m.nota : ''}</span>` : m.estado === 'pendiente' ? '<span class="pill p-past">Pendiente</span>' : m.estado === 'regular' ? '<span class="pill p-warm">Regular</span>' : '<span class="pill p-next">Cursando</span>'}</div>
         <div><h2>${esc(m.nombre)}</h2><p class="small muted">${m.anio}º año${p.total ? ` · ${p.done} de ${p.total} temas estudiados` : ''}</p></div>
         ${m.estado === 'regular' ? `<div>${regPill(m)}</div>` : ''}${asistResumen(m)}
         ${p.total ? `<div class="bar"><i style="width:${pct(p.done,p.total)}%"></i></div>` : ''}
         ${next ? `<div class="row small" style="gap:6px">${I('cal',14)}<span>${esc(next.tipo === 'TP' ? next.titulo : next.tipo + ' ' + next.titulo.toLowerCase())}</span>${statusPill(next)}</div>` : ''}
-      </div>`; }).join('')}</div>` : '<div class="empty">No hay materias en esta lista.</div>'}
+      </div>`; }).join('')}</div>` : '<div class="empty t-rock">No hay materias en esta lista.</div>'}
   </div>`;
 }
 function vMateria(){
@@ -487,10 +491,10 @@ function vMateria(){
       <button class="card mat" data-act="start-cuest" data-m="${m.id}">${I('quiz',24)}<h2>Cuestionario</h2><p class="small muted">${nQ} preguntas</p></button></div>`;
   return `<div class="stack">
     <button class="back" data-act="go" data-view="materias">${I('back',16)}Materias</button>
-    <div class="card"><div class="row" style="gap:16px;flex-wrap:nowrap">${ring(pct(p.done,p.total), 72, matColor(m))}
+    <div class="card t-sky"><div class="row" style="gap:16px;flex-wrap:nowrap">${ring(pct(p.done,p.total), 72, matColor(m))}
       <div style="flex:1;min-width:0"><p class="eyebrow">${m.anio}º año · ${m.estado}</p><h1>${esc(m.nombre)}</h1><p class="small muted">${p.done} de ${p.total} temas estudiados · ${docs.length} apuntes · ${nCards} flashcards</p>${hor ? `<p class="small muted row" style="gap:6px;margin-top:4px">${I('grid',14)}${esc(hor)}</p>` : ''}${m.estado === 'regular' ? `<div style="margin-top:6px">${regPill(m)}</div>` : ''}</div>
       <button class="btn sm" data-act="edit-materia" data-id="${m.id}" style="align-self:flex-start">${I('edit',15)}<span>Editar</span></button></div></div>
-    <div class="tabs" role="tablist">${[['unidades','Unidades y temas'],['biblio','Bibliografía'],['fechas','Fechas'],['asist','Asistencia'],['viejos','Exámenes anteriores'],['practicar','Practicar']].map(([k,l]) => `<button role="tab" aria-selected="${tab===k}" data-act="mat-tab" data-tab="${k}">${l}</button>`).join('')}</div>
+    <div class="tabs t-sky" role="tablist">${[['unidades','Unidades y temas'],['biblio','Bibliografía'],['fechas','Fechas'],['asist','Asistencia'],['viejos','Exámenes anteriores'],['practicar','Practicar']].map(([k,l]) => `<button role="tab" aria-selected="${tab===k}" data-act="mat-tab" data-tab="${k}">${l}</button>`).join('')}</div>
     ${body}
   </div>`;
 }
@@ -559,7 +563,7 @@ function vPracticar(){
   const showSel = P.tab === 'flash' || P.tab === 'quiz' || (P.tab === 'errores' && !(HS && HS.src === 'errores'));
   return `<div class="stack">
     <div class="row between"><h1>Practicar</h1><div class="row">${showSel ? matSelect() : ''}${P.tab === 'flash' || P.tab === 'quiz' ? `<button class="btn" data-act="add-card">${I('plus',16)}Nueva flashcard</button>` : ''}${P.tab === 'flash' ? `<button class="btn" data-act="mazos">${I('share',16)}Compartir mazos</button>` : ''}</div></div>
-    <div class="tabs" role="tablist">${tabs.map(([k,l,i]) => `<button role="tab" aria-selected="${P.tab===k}" data-act="p-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
+    <div class="tabs t-merino-inv" role="tablist">${tabs.map(([k,l,i]) => `<button role="tab" aria-selected="${P.tab===k}" data-act="p-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
     ${body}
   </div>`;
 }
@@ -771,7 +775,7 @@ function search(qs){
     else if (b.texto && has(b.texto)){ const i = norm(b.texto).indexOf(q); out.push({ tag:'En apunte', t:b.titulo, s:'…' + b.texto.slice(Math.max(0, i - 30), i + 70) + '…', go:['materia', b.materiaId, 'biblio'] }); } });
   S.eventos.forEach(e => (has(e.titulo) || has(e.tipo + ' ' + mat(e.materiaId).nombre)) && out.push({ tag:e.tipo === 'TP' ? 'TP' : 'Examen', t:e.tipo === 'TP' ? e.titulo : `${e.tipo} de ${mat(e.materiaId).nombre}`, s:fmtLong(e.fecha), go:['evento', e.id] }));
   S.cards.forEach(c => (has(c.term) || has(c.def)) && out.push({ tag:'Término', t:c.term, s:c.def, card:c.id }));
-  ['farm','enf'].forEach(k => { const T = FI_TIPOS[k]; S.fichas[T.key].forEach(x => (has(x.nombre) || has(x[T.sub] || '')) && out.push({ tag: k === 'farm' ? 'Fármaco' : 'Enfermedad', t:x.nombre, s:x[T.sub] || '', ficha:x.id, fk:k })); });
+  ['farm','enf','gen'].forEach(k => { const T = FI_TIPOS[k]; S.fichas[T.key].forEach(x => (has(x.nombre) || has(x[T.sub] || '')) && out.push({ tag: T.lbl, t:x.nombre, s:x[T.sub] || '', ficha:x.id, fk:k })); });
   S.mnemos.forEach(x => (has(x.titulo) || has(x.texto)) && out.push({ tag:'Mnemotecnia', t:x.titulo, s:x.texto, mne:true }));
   // la terminología general tiene miles de términos: van al final, los que empiezan igual primero y como mucho 6
   const tms = terminos().filter(t => t.tn.includes(q)).sort((a, b) => (b.tn === q) - (a.tn === q) || b.tn.startsWith(q) - a.tn.startsWith(q));
@@ -1092,11 +1096,11 @@ function vHoy(){
     [c.extra, 'Preguntas de repaso', 'De tus materias, para no olvidar lo que ya estudiaste.']
   ].filter(r => r[0]);
   return `<div class="grid g-home">
-    <div class="card stack" style="gap:14px"><div class="row between" style="align-items:flex-start"><div style="min-width:0;flex:1"><h2>Estudiar hoy</h2><p class="small muted">Una sesión corta que arma la app con lo que más te conviene repasar hoy.</p></div>${done ? `<span class="pill p-ok">${I('check',12)}Hecho hoy</span>` : ''}</div>
+    <div class="card t-beige stack" style="gap:14px"><div class="row between" style="align-items:flex-start"><div style="min-width:0;flex:1"><h2>Estudiar hoy</h2><p class="small muted">Una sesión corta que arma la app con lo que más te conviene repasar hoy.</p></div>${done ? `<span class="pill p-ok">${I('check',12)}Hecho hoy</span>` : ''}</div>
       ${n ? `<div>${rows.map(([k, t, s]) => `<div class="tip"><span class="n" style="background:var(--accent-soft);color:var(--accent)">${k}</span><div><b>${esc(t)}</b><p class="small muted">${esc(s)}</p></div></div>`).join('')}</div>
       <div class="row"><button class="btn pri" data-act="hs-start" data-src="hoy">${I('play',16)}${done ? 'Hacer otra ronda' : 'Empezar'} · ${n} ${n === 1 ? 'ejercicio' : 'ejercicios'} · ≈ ${mins} min</button></div>` : '<div class="empty">Todavía no hay flashcards ni preguntas para armar el repaso.</div>'}
     </div>
-    <div class="card stack" style="gap:10px"><h2>Cómo funciona</h2>
+    <div class="card t-teal stack" style="gap:10px"><h2>Cómo funciona</h2>
       <p class="small">Mezcla flashcards y preguntas para que practiques recordar y no solo releer: es lo que más ayuda a fijar lo estudiado.</p>
       <p class="small">Lo que fallás va al cuaderno de errores y vuelve a aparecer en los próximos días hasta que lo sepas.</p>
       <p class="small">Hacerlo todos los días suma a tu racha: llevás <b>${S.racha.dias} ${S.racha.dias === 1 ? 'día' : 'días'}</b> seguidos.</p>
@@ -1107,7 +1111,7 @@ function hoyCard(){
   const done = S.hoy && S.hoy.fecha === iso(TODAY), b = buildHoy(), c = b.counts, n = b.items.length;
   const mins = Math.max(3, Math.round(c.cards * 0.5 + (n - c.cards)));
   const chips = [c.err && `${c.err} ${c.err === 1 ? 'error' : 'errores'} para reintentar`, c.card && `${c.card} ${c.card === 1 ? 'flashcard' : 'flashcards'}`, c.ex && b.ex && `${c.ex} del ${b.ex.tipo.toLowerCase()} de ${matName(b.ex.materiaId)}`, c.extra && `${c.extra} de repaso`].filter(Boolean);
-  return `<div class="card stack" style="gap:12px"><div class="row between"><h2>Estudiar hoy</h2>${done ? `<span class="pill p-ok">${I('check',12)}Hecho</span>` : n ? `<span class="pill p-warm">${I('flame',12)}≈ ${mins} min</span>` : ''}</div>
+  return `<div class="card t-rock crema stack" style="gap:12px"><div class="row between"><h2>Estudiar hoy</h2>${done ? `<span class="pill p-ok">${I('check',12)}Hecho</span>` : n ? `<span class="pill p-warm">${I('flame',12)}≈ ${mins} min</span>` : ''}</div>
     ${done ? `<p class="small muted">Ya hiciste tu repaso de hoy: ${S.hoy.ok} de ${S.hoy.n} bien. Si querés, podés hacer otra ronda.</p>`
       : n ? `<p class="small muted">Una sesión corta con lo que más te conviene repasar hoy:</p><div class="chips">${chips.map(x => `<span class="chip" style="cursor:default">${esc(x)}</span>`).join('')}</div>`
       : '<p class="small muted">Todavía no hay material para armar el repaso. Agregá flashcards o preguntas.</p>'}
@@ -1276,36 +1280,109 @@ function vjForm(mId, v){
 }
 
 /* ---------- fichas y mnemotecnias ---------- */
-let FI = { tab:'farm', q:'' };
+let FI = { tab:'farm', q:'', carpeta:'', m:'' };
 const FI_TIPOS = {
-  farm: { lbl:'Fármaco', one:'fármaco', ico:'pill', key:'farmacos', sub:'grupo', subLbl:'Grupo', campos:[['mecanismo','Mecanismo de acción'],['indicaciones','Indicaciones'],['adversos','Efectos adversos'],['contraindicaciones','Contraindicaciones'],['interacciones','Interacciones']] },
-  enf: { lbl:'Enfermedad', one:'enfermedad', ico:'stetho', key:'enfermedades', sub:'especialidad', subLbl:'Especialidad', campos:[['etiologia','Etiología'],['fisiopato','Fisiopatología'],['clinica','Clínica'],['diagnostico','Diagnóstico'],['tratamiento','Tratamiento']] }
+  farm: { lbl:'Fármaco', one:'fármaco', ico:'pill', key:'farmacos', sub:'grupo', subLbl:'Grupo', sobre:'el fármaco', campos:[['mecanismo','Mecanismo de acción'],['indicaciones','Indicaciones'],['adversos','Efectos adversos'],['contraindicaciones','Contraindicaciones'],['interacciones','Interacciones']] },
+  enf: { lbl:'Enfermedad', one:'enfermedad', ico:'stetho', key:'enfermedades', sub:'especialidad', subLbl:'Especialidad', sobre:'la enfermedad', campos:[['etiologia','Etiología'],['fisiopato','Fisiopatología'],['clinica','Clínica'],['diagnostico','Diagnóstico'],['tratamiento','Tratamiento']] },
+  gen: { lbl:'Ficha', one:'ficha general', ico:'file', key:'generales', sub:'tema', subLbl:'Tema o sistema', sobre:'el tema', campos:[['descripcion','Descripción'],['claves','Puntos clave'],['clinica','Correlación clínica']] }
 };
-function fichaFind(id){ for (const k of ['farm', 'enf']){ const x = S.fichas[FI_TIPOS[k].key].find(f => f.id === id); if (x) return { x, k }; } return null; }
+const FI_TABS = [['farm','Fármacos','pill'],['enf','Enfermedades','stetho'],['gen','Generales','file'],['mne','Mnemotecnias','bulb']];
+function fichaFind(id){ for (const k of ['farm', 'enf', 'gen']){ const x = S.fichas[FI_TIPOS[k].key].find(f => f.id === id); if (x) return { x, k }; } return null; }
+const fiNombre = (x, k) => k === 'mne' ? x.titulo : x.nombre;
+const fiArr = k => k === 'mne' ? S.mnemos : S.fichas[FI_TIPOS[k].key];
+
+// Campos de cada ficha: cada estudiante los renombra, los saca o suma otros (Inervación, Vascularización…)
+const MN_CAMPOS = [['detalle', 'Qué significa cada parte']];
+const camposBase = k => k === 'mne' ? MN_CAMPOS : FI_TIPOS[k].campos;
+const camposDe = (x, k) => Array.isArray(x.campos) ? x.campos : camposBase(k).map(([c, l]) => ({ l, v: x[c] || '' }));
+const textoFicha = (x, k) => camposDe(x, k).map(c => `${c.l} ${c.v}`).join(' ');
+const PLANTILLAS = [
+  ['Fármaco', FI_TIPOS.farm.campos.map(c => c[1])],
+  ['Enfermedad', FI_TIPOS.enf.campos.map(c => c[1])],
+  ['Estructura anatómica', ['Ubicación', 'Descripción', 'Relaciones', 'Inervación', 'Vascularización', 'Función', 'Correlación clínica']],
+  ['Músculo', ['Origen', 'Inserción', 'Inervación', 'Irrigación', 'Acción', 'Correlación clínica']],
+  ['Hueso', ['Ubicación', 'Partes', 'Articulaciones', 'Inserciones musculares', 'Correlación clínica']],
+  ['Nervio', ['Origen', 'Trayecto', 'Ramos', 'Territorio que inerva', 'Lesión']],
+  ['Vaso sanguíneo', ['Origen', 'Trayecto', 'Ramas', 'Territorio que irriga', 'Correlación clínica']],
+  ['Microorganismo', ['Características', 'Transmisión', 'Patogenia', 'Clínica', 'Diagnóstico', 'Tratamiento']],
+  ['Signo o síntoma', ['Definición', 'Causas', 'Cómo se explora', 'Qué indica']]
+];
+const campoRow = c => `<div class="campo"><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="campo-l" type="text" value="${esc(c.l)}" placeholder="Nombre del campo (ej: Inervación)" aria-label="Nombre del campo" maxlength="80"><button type="button" class="icon-btn" data-act="campo-up" aria-label="Subir este campo">${I('up',15)}</button><button type="button" class="icon-btn danger" data-act="campo-del" aria-label="Sacar este campo">${I('trash',15)}</button></div><textarea class="campo-v" style="min-height:70px" aria-label="${esc(c.l || 'Contenido del campo')}">${esc(c.v)}</textarea></div>`;
+const plantillaOpts = () => `<option value="">Usar plantilla…</option>${PLANTILLAS.map(([n], i) => `<option value="b${i}">${esc(n)}</option>`).join('')}${S.plantillas.length ? `<optgroup label="Mis plantillas">${S.plantillas.map(p => `<option value="u${p.id}">${esc(p.nombre)}</option>`).join('')}</optgroup>` : ''}`;
+function camposEditor(campos){
+  return `<div class="f">Campos<span class="small muted" style="font-weight:500">Cambiales el nombre, sacá los que no uses o sumá otros. Cada ficha puede tener los suyos.</span>
+    <div class="stack" id="cp-list" style="gap:12px">${campos.map(campoRow).join('')}</div>
+    <div class="row" style="gap:6px"><button type="button" class="btn sm" data-act="campo-add">${I('plus',14)}Agregar campo</button>
+      <select data-change="plantilla" aria-label="Usar una plantilla de campos" style="width:auto">${plantillaOpts()}</select>
+      <button type="button" class="btn sm ghost" data-act="plantilla-nueva">Guardar como plantilla</button></div>
+    <div class="row" id="pl-nueva" style="gap:6px;flex-wrap:nowrap" hidden><input id="pl-n" type="text" placeholder="Nombre de la plantilla (ej: Pares craneales)" maxlength="40"><button type="button" class="btn sm" data-act="plantilla-ok">Guardar</button></div></div>`;
+}
+const leerCampos = () => [...document.querySelectorAll('#cp-list .campo')].map(r => ({ l: r.querySelector('.campo-l').value.trim(), v: r.querySelector('.campo-v').value.trim() })).filter(c => c.l || c.v).map(c => ({ l: c.l || 'Notas', v: c.v }));
+
+// Carpetas (fichero): las arma cada estudiante y una ficha puede estar en varias
+const carpeta = id => S.carpetas.find(c => c.id === id);
+const fiTodas = () => [...S.fichas.farmacos, ...S.fichas.enfermedades, ...S.fichas.generales, ...S.mnemos];
+const fiFiltro = x => (!FI.carpeta || (x.carpetas || []).includes(FI.carpeta)) && (!FI.m || (FI.m === '_' ? !mat(x.materiaId) : x.materiaId === FI.m));
+function fiLista(k, conBusqueda = true){
+  const q = conBusqueda ? norm(FI.q) : '';
+  return fiArr(k).filter(x => fiFiltro(x) && (!q || norm(`${fiNombre(x, k)} ${k === 'mne' ? x.texto : x[FI_TIPOS[k].sub] || ''} ${textoFicha(x, k)}`).includes(q)))
+    .sort((a, b) => fiNombre(a, k).localeCompare(fiNombre(b, k), 'es'));
+}
+function carpetaChips(sel){
+  return `<div class="chips" id="ff-cps">${S.carpetas.map(c => `<button type="button" class="chip ${sel.includes(c.id) ? 'on' : ''}" data-act="cp-toggle" data-id="${c.id}" aria-pressed="${sel.includes(c.id)}"><span class="dotc" style="background:${esc(c.color || '#567C8D')}"></span>${esc(c.nombre)}</button>`).join('')}
+    <span class="row" style="gap:4px;flex-wrap:nowrap"><input id="cp-nueva" type="text" placeholder="Nueva carpeta" maxlength="40" style="width:150px;padding:6px 10px"><button type="button" class="btn sm" data-act="cp-crear" aria-label="Crear carpeta">${I('plus',14)}</button></span></div>`;
+}
+const leerCarpetas = () => [...document.querySelectorAll('#ff-cps .chip[aria-pressed="true"]')].map(b => b.dataset.id);
+function nuevaCarpeta(nombre){
+  nombre = String(nombre || '').trim().slice(0, 40); if (!nombre) return null;
+  let c = S.carpetas.find(x => norm(x.nombre) === norm(nombre));
+  if (!c){ c = { id: uid(), nombre, color: FI_COLORES[S.carpetas.length % FI_COLORES.length] }; S.carpetas.push(c); }
+  return c;
+}
+
 function vFichas(){
-  const tabs = [['farm','Fármacos','pill'],['enf','Enfermedades','stetho'],['mne','Mnemotecnias','bulb']];
-  const ph = FI.tab === 'mne' ? 'Buscar mnemotecnias' : FI.tab === 'farm' ? 'Buscar fármacos' : 'Buscar enfermedades';
+  const ph = { farm:'Buscar fármacos', enf:'Buscar enfermedades', gen:'Buscar fichas', mne:'Buscar mnemotecnias' }[FI.tab];
+  if (FI.carpeta && !carpeta(FI.carpeta)) FI.carpeta = '';
+  const cuenta = id => fiTodas().filter(x => (x.carpetas || []).includes(id)).length;
   return `<div class="stack">
-    <div class="row between"><div><h1>Fichas</h1><p class="small muted">Fármacos, enfermedades y mnemotecnias, ordenados y listos para repasar.</p></div>
-      <button class="btn pri" data-act="fi-new">${I('plus',16)}${FI.tab === 'mne' ? 'Nueva mnemotecnia' : 'Nueva ficha'}</button></div>
-    <div class="row between"><div class="tabs" role="tablist">${tabs.map(([k, l, i]) => `<button role="tab" aria-selected="${FI.tab === k}" data-act="fi-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
+    <div class="row between"><div><h1>Fichas</h1><p class="small muted">Fármacos, enfermedades, temas generales y mnemotecnias, ordenados en tus carpetas y listos para repasar.</p></div>
+      <div class="row"><button class="btn" data-act="fi-share">${I('share',16)}Compartir</button><button class="btn" data-act="fi-recv">${I('upload',16)}Recibir</button><button class="btn pri" data-act="fi-new">${I('plus',16)}${FI.tab === 'mne' ? 'Nueva mnemotecnia' : 'Nueva ficha'}</button></div></div>
+    <div class="row between"><div class="tabs" role="tablist">${FI_TABS.map(([k, l, i]) => `<button role="tab" aria-selected="${FI.tab === k}" data-act="fi-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
       <div class="search" style="max-width:320px;flex:1 1 220px">${I('search',18)}<input type="text" id="fi-q" value="${esc(FI.q)}" placeholder="${ph}" aria-label="${ph}" autocomplete="off"></div></div>
+    <div class="fichero"><div class="chips" role="toolbar" aria-label="Carpetas">
+        <button class="chip ${!FI.carpeta ? 'on' : ''}" data-act="fi-carpeta" data-id="">${I('archive',14)}Todas</button>
+        ${S.carpetas.map(c => `<button class="chip ${FI.carpeta === c.id ? 'on' : ''}" data-act="fi-carpeta" data-id="${c.id}"><span class="dotc" style="background:${esc(c.color || '#567C8D')}"></span>${esc(c.nombre)} <span class="muted">${cuenta(c.id)}</span></button>`).join('')}
+        <button class="chip" data-act="fi-carpetas">${I(S.carpetas.length ? 'edit' : 'plus',14)}${S.carpetas.length ? 'Editar carpetas' : 'Nueva carpeta'}</button></div>
+      <select data-change="fi-m" aria-label="Filtrar por materia" style="width:auto"><option value="">Todas las materias</option>${S.materias.map(m => `<option value="${m.id}" ${FI.m === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}<option value="_" ${FI.m === '_' ? 'selected' : ''}>General (sin materia)</option></select></div>
     <div id="fi-list">${fichaList()}</div>
   </div>`;
 }
 function fichaList(){
-  const q = norm(FI.q);
-  if (FI.tab === 'mne'){
-    const list = S.mnemos.filter(x => !q || norm(`${x.titulo} ${x.texto} ${x.detalle || ''}`).includes(q));
-    return list.length ? `<div class="grid g3">${list.map(x => `<div class="card stack" style="gap:8px"><div class="row between" style="flex-wrap:nowrap"><span class="pill p-warm">${esc(matName(x.materiaId))}</span><div class="row" style="gap:4px"><button class="icon-btn" data-act="mn-edit" data-id="${x.id}" aria-label="Editar mnemotecnia">${I('edit',15)}</button><button class="icon-btn danger" data-act="mn-del" data-id="${x.id}" aria-label="Eliminar mnemotecnia">${I('trash',15)}</button></div></div>
-      <h3>${esc(x.titulo)}</h3><p style="font-family:var(--f-display);font-size:1.08rem;font-weight:600">${esc(x.texto)}</p>${x.detalle ? `<p class="small muted">${esc(x.detalle)}</p>` : ''}</div>`).join('')}</div>`
-      : `<div class="empty">${q ? 'No hay mnemotecnias que coincidan con la búsqueda.' : 'Todavía no hay mnemotecnias. Creá la primera o pedile una a la IA.'}</div>`;
+  const k = FI.tab, list = fiLista(k), filtrando = FI.q || FI.carpeta || FI.m;
+  const chipsCp = x => (x.carpetas || []).map(carpeta).filter(Boolean).map(c => `<span class="pill" style="background:transparent;border:1px solid ${esc(c.color || 'var(--line)')}">${esc(c.nombre)}</span>`).join('');
+  if (k === 'mne'){
+    return list.length ? `<div class="grid g3">${list.map(x => { const cs = camposDe(x, 'mne').filter(c => c.v);
+      return `<div class="card stack${tinte(x, 'gap:8px')}"><div class="row between" style="flex-wrap:nowrap"><span class="pill p-warm">${esc(matName(x.materiaId))}</span><div class="row" style="gap:4px"><button class="icon-btn" data-act="mn-edit" data-id="${x.id}" aria-label="Editar mnemotecnia">${I('edit',15)}</button><button class="icon-btn danger" data-act="mn-del" data-id="${x.id}" aria-label="Eliminar mnemotecnia">${I('trash',15)}</button></div></div>
+      <h3>${esc(x.titulo)}</h3><p style="font-family:var(--f-display);font-size:1.08rem;font-weight:600">${esc(x.texto)}</p>
+      ${cs.length === 1 && cs[0].l === MN_CAMPOS[0][1] ? `<p class="small muted">${esc(cs[0].v)}</p>` : cs.map(c => `<p class="small"><b>${esc(c.l)}:</b> <span class="muted">${esc(c.v)}</span></p>`).join('')}
+      ${chipsCp(x) ? `<div class="chips">${chipsCp(x)}</div>` : ''}</div>`; }).join('')}</div>`
+      : `<div class="empty">${filtrando ? 'No hay mnemotecnias con ese filtro.' : 'Todavía no hay mnemotecnias. Creá la primera o pedile una a la IA.'}</div>`;
   }
-  const T = FI_TIPOS[FI.tab];
-  const list = S.fichas[T.key].filter(x => !q || norm([x.nombre, x[T.sub] || '', ...T.campos.map(c => x[c[0]] || '')].join(' ')).includes(q)).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  return list.length ? `<div class="grid g3">${list.map(x => `<div class="card mat" data-act="fi-open" data-id="${x.id}" role="button" tabindex="0"><div class="row between" style="flex-wrap:nowrap"><span class="doc-ico">${I(T.ico,18)}</span>${mat(x.materiaId) ? `<span class="small muted">${esc(matName(x.materiaId))}</span>` : ''}</div>
-      <div><h2>${esc(x.nombre)}</h2><p class="small muted">${esc(x[T.sub] || '')}</p></div><p class="small clamp">${esc(x[T.campos[0][0]] || '')}</p></div>`).join('')}</div>`
-    : `<div class="empty">${q ? 'No hay fichas que coincidan con la búsqueda.' : 'Todavía no hay fichas. Creá la primera con “Nueva ficha”.'}</div>`;
+  const T = FI_TIPOS[k];
+  return list.length ? `<div class="grid g3">${list.map(x => { const c0 = camposDe(x, k).find(c => c.v);
+    return `<div class="card mat${tinte(x)}" data-act="fi-open" data-id="${x.id}" role="button" tabindex="0"><div class="row between" style="flex-wrap:nowrap"><span class="doc-ico">${I(T.ico,18)}</span>${mat(x.materiaId) ? `<span class="small muted">${esc(matName(x.materiaId))}</span>` : ''}</div>
+      <div><h2>${esc(x.nombre)}</h2><p class="small muted">${esc(x[T.sub] || '')}</p></div><p class="small clamp">${c0 ? `<b>${esc(c0.l)}:</b> ${esc(c0.v)}` : ''}</p>${chipsCp(x) ? `<div class="chips">${chipsCp(x)}</div>` : ''}</div>`; }).join('')}</div>`
+    : `<div class="empty">${filtrando ? 'No hay fichas con ese filtro.' : `Todavía no hay fichas${k === 'gen' ? ' generales. Sirven para anatomía, microbiología o cualquier tema: elegí los campos que quieras' : ''}. Creá la primera con “Nueva ficha”.`}</div>`;
+}
+// Color que elige cada estudiante para una ficha o mnemotecnia (ayuda de memoria visual)
+const FI_COLORES = ['#C0392B','#E67E22','#D4AC0D','#4F8A3A','#16A085','#2F6FB5','#7A55A8','#C2477E','#6D4C41'];
+const tinte = (x, st = '') => x && /^#[0-9a-f]{6}$/i.test(x.color || '') ? ` tinted" style="--tint:${x.color};${st}` : `" style="${st}`;
+function colorPicker(v){
+  const otro = v && !FI_COLORES.includes(v);
+  return `<div class="f">Color<div class="swatches" id="col-sw"><input type="hidden" id="col-v" value="${esc(v || '')}">
+    <button type="button" class="sw" data-act="col-pick" data-c="" aria-pressed="${!v}" aria-label="Sin color" title="Sin color">${I('x',12)}</button>
+    ${FI_COLORES.map(c => `<button type="button" class="sw" data-act="col-pick" data-c="${c}" aria-pressed="${v === c}" style="background:${c};border-color:${c}" aria-label="Color ${c}"></button>`).join('')}
+    <input type="color" class="sw-otro" data-change="col-otro" value="${otro ? v : '#16587B'}" aria-label="Otro color" title="Elegí cualquier otro color"></div></div>`;
 }
 function guessUnit(mId, x, T){
   if (x.u && units(mId).some(u => u.id === x.u)) return x.u;
@@ -1313,15 +1390,18 @@ function guessUnit(mId, x, T){
   const u = units(mId).find(u => [u.nombre, ...u.temas.map(t => t.nombre)].some(s => words.some(w => norm(s).includes(w))));
   return u ? u.id : undefined;
 }
+const fiCarpetasIni = x => x ? (x.carpetas || []) : FI.carpeta ? [FI.carpeta] : [];
 function fichaForm(k, x){
-  const T = FI_TIPOS[k], mSel = x ? x.materiaId : (k === 'farm' && mat('farma') ? 'farma' : '');
-  modal(`<div class="row between"><h2>${x ? 'Editar ficha' : 'Nueva ficha de ' + T.one}</h2>${closeX()}</div>
+  const T = FI_TIPOS[k], mSel = x ? x.materiaId : FI.m && FI.m !== '_' ? FI.m : (k === 'farm' && mat('farma') ? 'farma' : '');
+  modal(`<div class="row between"><h2>${x ? 'Editar ficha' : 'Nueva ' + (k === 'gen' ? 'ficha general' : 'ficha de ' + T.one)}</h2>${closeX()}</div>
     <form class="stack" style="gap:12px" data-form="ficha" data-k="${k}" data-id="${x ? x.id : ''}">
-      <label class="f">Nombre<input id="ff-nombre" type="text" required value="${esc(x ? x.nombre : '')}" placeholder="${k === 'farm' ? 'Ej: Metformina' : 'Ej: Insuficiencia cardíaca'}"></label>
-      <button class="btn" type="button" style="align-self:flex-start" data-act="fi-ai" data-k="${k}">${I('spark',16)}Completar el resto con IA</button>
+      <label class="f">Nombre<input id="ff-nombre" type="text" required value="${esc(x ? x.nombre : '')}" placeholder="${{ farm:'Ej: Metformina', enf:'Ej: Insuficiencia cardíaca', gen:'Ej: Nervio mediano' }[k]}"></label>
       <div class="grid g2" style="gap:12px"><label class="f">${T.subLbl}<input id="ff-sub" type="text" value="${esc(x ? x[T.sub] || '' : '')}"></label>
       <label class="f">Materia<select id="ff-m"><option value="">General</option>${S.materias.map(m => `<option value="${m.id}" ${mSel === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label></div>
-      ${T.campos.map(([c, l]) => `<label class="f">${l}<textarea id="ff-${c}" style="min-height:70px">${esc(x ? x[c] || '' : '')}</textarea></label>`).join('')}
+      <div class="f">Carpetas${carpetaChips(fiCarpetasIni(x))}</div>
+      ${colorPicker(x && x.color)}
+      ${camposEditor(x ? camposDe(x, k) : camposBase(k).map(([, l]) => ({ l, v: '' })))}
+      <button class="btn" type="button" style="align-self:flex-start" data-act="fi-ai" data-k="${k}">${I('spark',16)}Completar los campos con IA</button>
       <p class="small muted" id="ff-msg"></p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></form>`);
 }
@@ -1329,12 +1409,145 @@ function mnemoForm(x){
   modal(`<div class="row between"><h2>${x ? 'Editar mnemotecnia' : 'Nueva mnemotecnia'}</h2>${closeX()}</div>
     <form class="stack" style="gap:12px" data-form="mnemo" data-id="${x ? x.id : ''}">
       <label class="f">Qué querés recordar<input id="mf-t" type="text" required value="${esc(x ? x.titulo : '')}" placeholder="Ej: Ramas del arco aórtico"></label>
-      <label class="f">Materia<select id="mf-m"><option value="">General</option>${S.materias.map(m => `<option value="${m.id}" ${x && x.materiaId === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
+      <label class="f">Materia<select id="mf-m"><option value="">General</option>${S.materias.map(m => `<option value="${m.id}" ${(x ? x.materiaId : FI.m) === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
       <button class="btn" type="button" style="align-self:flex-start" data-act="mn-ai">${I('spark',16)}Proponer una con IA</button>
       <label class="f">Mnemotecnia<textarea id="mf-x" required style="min-height:70px" placeholder="La frase o regla para acordarte">${esc(x ? x.texto : '')}</textarea></label>
-      <label class="f">Qué significa cada parte<textarea id="mf-d" style="min-height:70px">${esc(x ? x.detalle || '' : '')}</textarea></label>
+      <div class="f">Carpetas${carpetaChips(fiCarpetasIni(x))}</div>
+      ${colorPicker(x && x.color)}
+      ${camposEditor(x ? camposDe(x, 'mne') : MN_CAMPOS.map(([, l]) => ({ l, v: '' })))}
       <p class="small muted" id="mf-msg"></p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></form>`);
+}
+function carpetasModal(){
+  modal(`<div class="row between"><h2>Carpetas</h2>${closeX()}</div>
+    <p class="small muted">Armá carpetas a tu gusto (por parcial, por sistema, por lo que quieras). Una ficha puede estar en varias. Elegís las carpetas al crear o editar cada ficha.</p>
+    <div class="stack" style="gap:8px">${S.carpetas.map(c => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input type="color" class="sw-otro" value="${esc(c.color || '#567C8D')}" data-change="cp-color" data-id="${c.id}" aria-label="Color de la carpeta ${esc(c.nombre)}"><input type="text" value="${esc(c.nombre)}" data-change="cp-nombre" data-id="${c.id}" maxlength="40" aria-label="Nombre de la carpeta"><button class="icon-btn danger" type="button" data-act="cp-del" data-id="${c.id}" aria-label="Eliminar la carpeta ${esc(c.nombre)}">${I('trash',15)}</button></div>`).join('') || '<p class="small muted">Todavía no tenés carpetas.</p>'}</div>
+    <form class="row" style="gap:6px;flex-wrap:nowrap" data-form="carpeta"><input id="cpm-n" type="text" placeholder="Nombre de la carpeta nueva" maxlength="40" required><button class="btn pri" type="submit">${I('plus',16)}Crear</button></form>
+    <p class="small muted">Si eliminás una carpeta, las fichas no se borran: solo salen de esa carpeta.</p>`);
+}
+
+/* ---------- compartir con un código (fichas y terminología) ----------
+   El contenido viaja comprimido dentro del código: no pasa por la base de datos. */
+const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+async function empaquetar(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (window.CompressionStream){ try { return 'MEDNOE1:' + b64(new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())); } catch (e) {} }
+  return 'MEDNOE0:' + b64(bytes);
+}
+async function desempaquetar(txt){
+  const m = String(txt || '').replace(/\s+/g, '').match(/MEDNOE([01]):([A-Za-z0-9+/=]+)/); if (!m) throw new Error('formato');
+  let bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
+  if (m[1] === '1') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+let SH = { msg:'' };
+function selLista(grupos){
+  return `<div id="sel-box" class="sel-box">${grupos.map(g => `<div class="sel-g"><label class="sel-h"><input type="checkbox" data-change="sel-all" data-g="${g.k}" ${g.items.every(i => i.on) ? 'checked' : ''}><b>${esc(g.titulo)}</b><span class="muted small">${g.items.length}</span></label>
+    ${g.items.map(i => `<label class="sel-i"><input type="checkbox" class="sel" data-g="${g.k}" value="${esc(i.id)}" ${i.on ? 'checked' : ''} data-change="sel-one"><span style="min-width:0"><b>${esc(i.n)}</b>${i.s ? ` <span class="muted small">${esc(i.s)}</span>` : ''}</span></label>`).join('')}</div>`).join('')}</div>
+    <p class="small muted" id="sel-n"></p>`;
+}
+const seleccion = () => [...document.querySelectorAll('#sel-box .sel:checked')].map(c => c.value);
+function selContar(){ const n = seleccion().length, el = $('#sel-n'); if (el) el.textContent = `${n} ${n === 1 ? 'elegido' : 'elegidos'}`; document.querySelectorAll('#sel-box [data-change="sel-all"]').forEach(a => { const xs = [...document.querySelectorAll(`#sel-box .sel[data-g="${a.dataset.g}"]`)]; a.checked = xs.every(x => x.checked); }); }
+function codigoOut(code, que, n){
+  SH.msg = `Te paso ${n} ${que} de MedNoe. Abrí MedNoe, tocá “Recibir” y pegá este código:\n\n${code}`;
+  return `<div class="note code" id="sh-code">${esc(code)}</div>
+    <div class="row" style="margin-top:8px"><span class="small muted">${n} ${que} · ${code.length.toLocaleString('es-AR')} caracteres</span><span style="margin-left:auto" class="row">${navigator.share ? `<button class="btn sm" data-act="sh-send">${I('send',14)}Enviar</button>` : ''}<button class="btn sm pri" data-act="sh-copy">${I('copy',14)}Copiar mensaje</button></span></div>
+    <p class="small muted">Mandalo por WhatsApp, mail o donde quieras. La otra persona lo pega en “Recibir”.</p>`;
+}
+const quienSoy = () => (HOST.user && HOST.user.nombre) || '';
+function fiShareModal(){
+  const grupos = FI_TABS.map(([k, l]) => ({ k, titulo: l, items: fiLista(k, false).map(x => ({ id: `${k}:${x.id}`, n: fiNombre(x, k), s: k === 'mne' ? '' : x[FI_TIPOS[k].sub] || '', on: !!FI.carpeta || k === FI.tab })) })).filter(g => g.items.length);
+  const cp = carpeta(FI.carpeta);
+  modal(`<div class="row between"><h2>Compartir fichas</h2>${closeX()}</div>
+    ${grupos.length ? `<p class="small muted">Elegí qué fichas pasar${cp ? ` de la carpeta <b>${esc(cp.nombre)}</b>` : ''}. Se arma un código: la otra persona lo pega en “Recibir” y le aparecen en su app, con sus campos y colores.${FI.carpeta || FI.m ? ' Se muestran las del filtro que tenés puesto.' : ''}</p>
+    ${selLista(grupos)}
+    <button class="btn pri" data-act="fi-share-gen" style="align-self:flex-start">${I('share',16)}Generar código</button><div id="sh-out"></div>`
+    : '<p class="muted">No hay fichas para compartir con este filtro.</p>'}`);
+  selContar();
+}
+async function fiShareGen(){
+  const ids = seleccion(), out = $('#sh-out'); if (!ids.length){ out.innerHTML = '<p class="small" style="color:var(--danger)">Elegí al menos una ficha.</p>'; return; }
+  const f = ids.map(s => { const [k, id] = s.split(':'), x = fiArr(k).find(y => y.id === id); if (!x) return null;
+    const m = mat(x.materiaId); return { t: k, n: fiNombre(x, k), s: k === 'mne' ? x.texto : x[FI_TIPOS[k].sub] || '', c: camposDe(x, k).map(c => [c.l, c.v]), col: x.color || undefined, m: m ? m.nombre : undefined }; }).filter(Boolean);
+  const cp = carpeta(FI.carpeta), code = await empaquetar({ k:'fichas', v:1, de: quienSoy(), cp: cp ? cp.nombre : undefined, f });
+  out.innerHTML = codigoOut(code, f.length === 1 ? 'ficha' : 'fichas', f.length);
+}
+function recibirModal(que){
+  modal(`<div class="row between"><h2>Recibir ${que === 'fichas' ? 'fichas' : 'términos'}</h2>${closeX()}</div>
+    <p class="small muted">Pegá el código o el mensaje entero que te mandaron (empieza con MEDNOE).</p>
+    <textarea id="rc-in" placeholder="Pegá acá el código" style="min-height:110px"></textarea>
+    ${que === 'fichas' ? `<label class="row small" style="gap:8px"><input type="checkbox" id="rc-cp-on" checked>Guardarlas en la carpeta</label><input type="text" id="rc-cp" maxlength="40" placeholder="Nombre de la carpeta" value="Recibidas">` : ''}
+    <div class="row"><button class="btn pri" data-act="rc-ok" data-que="${que}">${I('upload',16)}Recibir</button></div>
+    <p class="small" id="rc-msg"></p>`);
+}
+async function recibirOk(que, el){
+  const msg = $('#rc-msg'); let data;
+  try { data = await desempaquetar($('#rc-in').value); } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = 'El código no es válido. Revisá que esté completo: empieza con MEDNOE.'; return; }
+  if (data.k !== que){ msg.style.color = 'var(--danger)'; msg.textContent = data.k === 'terminos' ? 'Ese código es de términos: pegalo en Terminología → Recibir.' : data.k === 'fichas' ? 'Ese código es de fichas: pegalo en Fichas → Recibir.' : 'El código no es válido.'; return; }
+  el.disabled = true;
+  const r = que === 'fichas' ? recibirFichas(data, $('#rc-cp-on').checked ? (($('#rc-cp').value.trim() === 'Recibidas' && data.cp) || $('#rc-cp').value.trim() || data.cp || 'Recibidas') : '') : recibirTerminos(data);
+  save(); render();
+  msg.style.color = 'var(--ok)'; msg.textContent = `Listo: ${r.n} ${que === 'fichas' ? (r.n === 1 ? 'ficha nueva' : 'fichas nuevas') : (r.n === 1 ? 'término nuevo' : 'términos nuevos')}${data.de ? ` de ${data.de}` : ''}.${r.rep ? ` ${r.rep} ya ${r.rep === 1 ? 'estaba' : 'estaban'} y no se ${r.rep === 1 ? 'duplicó' : 'duplicaron'}.` : ''}`;
+  track(que === 'fichas' ? 'fichas' : 'terminologia', 'recibir');
+}
+function recibirFichas(data, nombreCarpeta){
+  const lista = Array.isArray(data.f) ? data.f : []; let n = 0, rep = 0;
+  const cp = nombreCarpeta ? nuevaCarpeta(nombreCarpeta) : null;
+  lista.forEach(it => {
+    const k = ['farm', 'enf', 'gen', 'mne'].includes(it && it.t) ? it.t : null, nombre = String((it && it.n) || '').trim().slice(0, 200); if (!k || !nombre) return;
+    const arr = fiArr(k);
+    if (arr.some(x => norm(fiNombre(x, k)) === norm(nombre))){ rep++; return; }
+    const m = it.m && S.materias.find(mm => norm(mm.nombre) === norm(it.m));
+    const campos = (Array.isArray(it.c) ? it.c : []).map(c => ({ l: String((c && c[0]) || '').slice(0, 80), v: String((c && c[1]) || '').slice(0, 5000) })).filter(c => c.l || c.v);
+    const base = { id: uid(), materiaId: m ? m.id : '', color: /^#[0-9a-f]{6}$/i.test(it.col || '') ? it.col : '', carpetas: cp ? [cp.id] : [], campos, compartida: true };
+    arr.push(k === 'mne' ? { ...base, titulo: nombre, texto: String(it.s || '').slice(0, 1000) } : { ...base, nombre, [FI_TIPOS[k].sub]: String(it.s || '').slice(0, 200) });
+    n++;
+  });
+  if (cp) FI.carpeta = cp.id;
+  return { n, rep };
+}
+// Terminología: cada persona (también un profe) pasa sus términos propios con un código
+function tmShareModal(){
+  const propios = (S.glosario.propios || []).slice().reverse(), cats = [...new Set(propios.map(t => t.cat || 'Sin categoría'))];
+  const grupos = cats.map((c, i) => ({ k: 'c' + i, titulo: c, items: propios.filter(t => (t.cat || 'Sin categoría') === c).map(t => ({ id: t.id, n: t.term, s: '', on: !TM.cat || t.cat === TM.cat })) }));
+  const admin = esAdmin() && GL.api;
+  modal(`<div class="row between"><h2>Compartir términos</h2>${closeX()}</div>
+    ${propios.length ? `<p class="small muted">Estos son tus términos propios, los más nuevos primero. Elegí cuáles pasar: se arma un código y la otra persona lo pega en Terminología → Recibir.</p>
+    ${selLista(grupos)}
+    <div class="row"><button class="btn pri" data-act="tm-share-gen">${I('share',16)}Generar código</button>${admin ? `<button class="btn" data-act="tm-global">${I('upload',16)}Agregar a todas las cuentas</button>` : ''}</div>
+    ${admin ? '<p class="small muted">Como administradora, “Agregar a todas las cuentas” los pasa a la lista compartida: los ven todas las personas que usan la app, sin código.</p>' : ''}<div id="sh-out"></div>`
+    : `<p class="muted">Todavía no tenés términos propios para compartir.${esAdmin() ? ' Los que agregás marcando “Agregarlo para todas las cuentas” ya los ven todas las personas.' : ' Agregá alguno con “Agregar término”.'}</p>`}`);
+  selContar();
+}
+async function tmShareGen(){
+  const ids = new Set(seleccion()), out = $('#sh-out'), sel = S.glosario.propios.filter(t => ids.has(t.id));
+  if (!sel.length){ out.innerHTML = '<p class="small" style="color:var(--danger)">Elegí al menos un término.</p>'; return; }
+  const code = await empaquetar({ k:'terminos', v:1, de: quienSoy(), t: sel.map(t => [t.term, t.def, t.cat || '', t.src || '']) });
+  out.innerHTML = codigoOut(code, sel.length === 1 ? 'término' : 'términos', sel.length);
+}
+function recibirTerminos(data){
+  const have = new Set(terminos().map(t => t.tn)); let n = 0, rep = 0;
+  (Array.isArray(data.t) ? data.t : []).forEach(r => {
+    const term = String((r && r[0]) || '').trim().slice(0, 200), def = String((r && r[1]) || '').trim().slice(0, 5000); if (!term || !def) return;
+    if (have.has(norm(term))){ rep++; return; }
+    S.glosario.propios.push({ id: uid(), term, def, cat: String(r[2] || '').trim().slice(0, 80), src: String(r[3] || '').trim().slice(0, 300) }); have.add(norm(term)); n++;
+  });
+  tmInvalidar(); return { n, rep };
+}
+// Solo administradoras: los términos propios elegidos pasan a la lista que ven todas las cuentas
+async function tmGlobal(el){
+  const ids = new Set(seleccion()), out = $('#sh-out'), sel = S.glosario.propios.filter(t => ids.has(t.id));
+  if (!sel.length){ out.innerHTML = '<p class="small" style="color:var(--danger)">Elegí al menos un término.</p>'; return; }
+  if (!el.dataset.armed){ el.dataset.armed = '1'; el.textContent = `Sí, que los vean todas las cuentas (${sel.length})`; return; }
+  el.disabled = true; el.textContent = 'Agregando…';
+  try {
+    const nuevos = await GL.api.importar(sel.map(t => ({ term: t.term, definition: t.def, category: t.cat, source: t.src })));
+    const porTerm = new Map(nuevos.map(r => [norm(r.term), r]));
+    S.glosario.propios = S.glosario.propios.filter(t => { const r = ids.has(t.id) && porTerm.get(norm(t.term)); if (!r) return true;
+      const st = S.glosario.stats['p:' + t.id]; if (st){ S.glosario.stats['g:' + r.id] = st; delete S.glosario.stats['p:' + t.id]; } return false; });
+    GL.global.push(...nuevos); tmInvalidar(); save(); closeModal(); render(); track('terminologia', 'publicar');
+    toast(`Listo: ${nuevos.length} ${nuevos.length === 1 ? 'término pasó' : 'términos pasaron'} a todas las cuentas.${sel.length - nuevos.length ? ` ${sel.length - nuevos.length} ya ${sel.length - nuevos.length === 1 ? 'existía' : 'existían'} en la lista compartida y ${sel.length - nuevos.length === 1 ? 'quedó como tuyo' : 'quedaron como tuyos'}.` : ''}`);
+  } catch (ex) { out.innerHTML = `<p class="small" style="color:var(--danger)">${esc(ex.message || 'No se pudo agregar.')}</p>`; el.disabled = false; el.textContent = 'Agregar a todas las cuentas'; delete el.dataset.armed; }
 }
 
 /* ---------- referencia rápida ---------- */
@@ -1424,7 +1637,7 @@ function hoyFacuCard(){
   else if (!p) body = '<p class="small muted">No tenés clases cargadas para esta semana.</p>';
   else if (p.hoy) body = `<div class="stack" style="gap:10px">${p.list.map(clsRowHoy).join('')}</div>`;
   else { title = 'Próximas clases'; body = `<p class="small muted" style="margin-bottom:8px">${p.terminaron ? 'Por hoy terminaste.' : 'Hoy no tenés clases.'} ${p.k === 1 ? 'Mañana' : 'El ' + DIAS[p.dia].toLowerCase()}:</p><div class="stack" style="gap:8px">${p.list.map(c => clsRow(c, false)).join('')}</div>`; }
-  return `<div class="card"><div class="card-h"><h2>${title}</h2><button class="btn sm ghost" data-act="go" data-view="horario">Ver horario</button></div>${body}</div>`;
+  return `<div class="card t-rock crema"><div class="card-h"><h2>${title}</h2><button class="btn sm ghost" data-act="go" data-view="horario">Ver horario</button></div>${body}</div>`;
 }
 function vHorario(){
   const hoy = TODAY.getDay(), dur = c => { const [h1, m1] = c.desde.split(':').map(Number), [h2, m2] = c.hasta.split(':').map(Number); return (h2 * 60 + m2) - (h1 * 60 + m1); };
@@ -1465,18 +1678,38 @@ function renderPomo(){
     <div class="row" style="justify-content:center"><button class="btn pri" data-act="pm-toggle">${I(PM.running ? 'pause' : 'play',16)}${PM.running ? 'Pausar' : full ? 'Empezar' : 'Seguir'}</button><button class="btn" data-act="pm-reset">Reiniciar</button><button class="btn ghost" data-act="pm-skip">${PM.phase === 'foco' ? 'Ir al descanso' : 'Saltar descanso'}</button></div>
     <div class="stack" style="gap:10px;padding:12px 8px 4px"><label class="f">Estudiando<select id="pm-m" data-change="pm-m"><option value="">Sin materia</option>${cursando().map(m => `<option value="${m.id}" ${S.pomo.materiaId === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
       <div class="row small" style="gap:6px">Bloques: ${[[25, 5], [50, 10]].map(([f, p]) => `<button class="chip ${S.pomo.foco === f ? 'on' : ''}" data-act="pm-preset" data-f="${f}" data-p="${p}">${f} min + ${p} de descanso</button>`).join('')}</div>
+      <div class="row small" style="gap:6px">Sonido al terminar: <button class="chip ${S.pomo.sonido !== false ? 'on' : ''}" data-act="pm-sonido" aria-pressed="${S.pomo.sonido !== false}">${S.pomo.sonido !== false ? 'Activado' : 'Desactivado'}</button><button class="chip" data-act="pm-probar">Probar sonido</button></div>
       <p class="small muted">Hoy registraste <b>${fmtMin(hoyMin)}</b> de estudio. Cada bloque completo suma a tu racha y a Progreso.</p></div>`;
 }
-function beep(){
-  const ctx = PM.actx; if (!ctx) return;
-  try { [0, 0.3, 0.6].forEach(d => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + d + 0.22);
-    o.start(ctx.currentTime + d); o.stop(ctx.currentTime + d + 0.25); }); } catch (e) {}
+// Campana al terminar un bloque o un descanso. Se agenda en el reloj de audio, así suena a tiempo
+// aunque el navegador frene los temporizadores de la pestaña cuando está en segundo plano.
+function audioPomo(){
+  if (!PM.actx){ try { PM.actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { PM.actx = null; } }
+  try { PM.actx && PM.actx.resume && PM.actx.resume(); } catch (e) {}
+  return PM.actx;
+}
+function campana(ctx, t0){
+  const out = ctx.createGain(); out.gain.value = 0.6; out.connect(ctx.destination);
+  [0, 1.4].forEach(r => [[0, 1046.5], [0.18, 1318.5], [0.36, 1568]].forEach(([d, f]) => [[1, 0.5], [2.76, 0.12]].forEach(([h, a]) => {
+    const t = t0 + r + d, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f * h;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.15); })));
+  return out;
+}
+function pomoAgendar(){
+  const ctx = PM.actx;
+  if (PM.son && ctx && ctx.currentTime < PM.sonT0 - 0.05){ try { PM.son.disconnect(); } catch (e) {} }
+  PM.son = null; PM.sonPara = 0;
+  if (!ctx || !PM.running || S.pomo.sonido === false) return;
+  try { PM.sonT0 = ctx.currentTime + Math.max(0, (PM.endsAt - Date.now()) / 1000); PM.son = campana(ctx, PM.sonT0); PM.sonPara = PM.endsAt; } catch (e) {}
 }
 function logSesion(min){ min = Math.round(min); if (min < 1) return; S.sesiones.push({ id: uid(), t: Date.now(), materiaId: S.pomo.materiaId || '', min }); markStudy(); save(); track('pomodoro', min); if (R.view === 'progreso') render(); }
-function pomoSet(phase, running){ PM.phase = phase; PM.left = pmFull(); PM.running = running; PM.endsAt = Date.now() + PM.left * 1000; }
+function pomoSet(phase, running){ PM.phase = phase; PM.left = pmFull(); PM.running = running; PM.endsAt = Date.now() + PM.left * 1000; pomoAgendar(); }
 function pomoPhaseEnd(){
-  beep();
+  if (S.pomo.sonido !== false){
+    if (PM.sonPara !== PM.endsAt && PM.actx){ try { campana(PM.actx, PM.actx.currentTime); } catch (e) {} }
+    try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (e) {}
+  }
   if (PM.phase === 'foco'){ logSesion(S.pomo.foco); pomoSet('pausa', true); toast(`¡Bloque terminado! Tomate ${S.pomo.pausa} minutos de descanso.`); }
   else { pomoSet('foco', false); toast('Terminó el descanso. Cuando quieras, arrancá otro bloque.'); }
   if (!$('#pomo-panel').hidden) renderPomo();
@@ -1631,7 +1864,7 @@ Evaluá si el concepto es correcto aunque use otras palabras. Respondé solo un 
     const id = d.id; S.materias = S.materias.filter(m => m.id !== id); delete S.unidades[id];
     ['eventos','biblio','cards','preguntas','errores','viejos','horario','explicaciones'].forEach(k => S[k] = S[k].filter(x => x.materiaId !== id));
     S.materias.forEach(x => { if (x.correl) x.correl = x.correl.filter(c => c !== id); });
-    [...S.fichas.farmacos, ...S.fichas.enfermedades, ...S.mnemos].forEach(x => { if (x.materiaId === id) x.materiaId = ''; });
+    fiTodas().forEach(x => { if (x.materiaId === id) x.materiaId = ''; });
     if (S.pomo.materiaId === id) S.pomo.materiaId = '';
     P.m = 'todas'; P.queue = []; P.quiz = null; P.cq = null; HS = null; if (SIM && !SIM.done && SIM.cfg.m === id){ clearInterval(simTick); SIM = null; }
     save(); closeModal(); go('materias'); },
@@ -1705,7 +1938,7 @@ Evaluá si el concepto es correcto aunque use otras palabras. Respondé solo un 
 };
 const armed = (el, label) => { if (el.dataset.armed) return true; el.dataset.armed = '1'; if (el.classList.contains('icon-btn')){ el.classList.add('confirm'); el.textContent = label || '¿Eliminar?'; } else { el.classList.add('danger'); el.style.color = ''; el.innerHTML = I('trash',16) + (label || 'Sí, eliminar'); } return false; };
 Object.assign(A, {
-  more: () => modal(`<div class="row between"><h2>Más secciones</h2>${closeX()}</div><div class="more-grid">${NAV.filter(n => MORE.includes(n[0])).map(([v, l, i]) => `<button data-act="go" data-view="${v}">${I(i,22)}${l}</button>`).join('')}<button data-act="pomo-open">${I('timer',22)}Pomodoro</button></div>${HOST.user ? `<div class="row between" style="border-top:1px solid var(--line);padding-top:12px"><span class="small muted" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(HOST.user.email)}</span><button class="btn sm" data-act="logout">Cerrar sesión</button></div>` : ''}`),
+  more: () => modal(`<div class="row between"><h2>Más secciones</h2>${closeX()}</div><div class="more-grid">${NAV.filter(n => MORE.includes(n[0])).map(([v, l, i]) => `<button data-act="go" data-view="${v}">${I(i,22)}${l}</button>`).join('')}<button data-act="pomo-open">${I('timer',22)}Pomodoro</button></div>${HOST.user ? `<div class="row between" style="border-top:1px solid var(--line);padding-top:12px"><span class="small muted" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(HOST.user.email)}</span><button class="btn sm t-teal" data-act="logout">Cerrar sesión</button></div>` : ''}`),
   'p-open': d => { P.tab = d.tab; go('practicar'); },
   // estudiar hoy y errores
   'hs-start': d => { track('estudiar', d.src); startSession(d.src, P.m); P.tab = d.src === 'errores' ? 'errores' : 'hoy'; if (R.view !== 'practicar') go('practicar'); else { render(); window.scrollTo(0, 0); } },
@@ -1776,29 +2009,60 @@ Texto del examen:
   // fichas
   'fi-tab': d => { FI.tab = d.tab; FI.q = ''; render(); },
   'fi-new': () => FI.tab === 'mne' ? mnemoForm(null) : fichaForm(FI.tab, null),
-  'fi-open': d => { const r = fichaFind(d.id); if (!r) return; const T = FI_TIPOS[r.k], x = r.x;
+  'fi-open': d => { const r = fichaFind(d.id); if (!r) return; const T = FI_TIPOS[r.k], x = r.x, cs = camposDe(x, r.k).filter(c => c.v), cps = (x.carpetas || []).map(carpeta).filter(Boolean);
     modal(`<div class="row between"><p class="eyebrow">${T.lbl}${x[T.sub] ? ' · ' + esc(x[T.sub]) : ''}</p>${closeX()}</div><h2>${esc(x.nombre)}</h2>
-      <dl class="dl">${T.campos.filter(([k]) => x[k]).map(([k, l]) => `<div><dt>${l}</dt><dd>${esc(x[k])}</dd></div>`).join('') || '<p class="small muted">Esta ficha todavía no tiene contenido.</p>'}</dl>
+      ${cps.length ? `<div class="chips">${cps.map(c => `<span class="pill" style="background:transparent;border:1px solid ${esc(c.color || 'var(--line)')}">${esc(c.nombre)}</span>`).join('')}</div>` : ''}
+      <dl class="dl">${cs.map(c => `<div><dt>${esc(c.l)}</dt><dd>${esc(c.v)}</dd></div>`).join('') || '<p class="small muted">Esta ficha todavía no tiene contenido.</p>'}</dl>
       <p class="small" id="fi-msg"></p>
-      <div class="row"><button class="btn pri" data-act="fi-cards" data-id="${x.id}">${I('cards',16)}Crear flashcards</button><button class="btn" data-act="ai-ask" data-q="${esc(`Explicame ${x.nombre} de forma simple y tomame 3 preguntas tipo examen sobre ${r.k === 'farm' ? 'este fármaco' : 'esta enfermedad'}.`)}">${I('spark',16)}Preguntale a la IA</button><button class="btn" data-act="fi-edit" data-id="${x.id}">${I('edit',16)}Editar</button><button class="btn" style="color:var(--danger)" data-act="fi-del" data-id="${x.id}">${I('trash',16)}Eliminar</button></div>`); },
+      <div class="row"><button class="btn pri" data-act="fi-cards" data-id="${x.id}">${I('cards',16)}Crear flashcards</button><button class="btn" data-act="ai-ask" data-q="${esc(`Explicame ${x.nombre} de forma simple y tomame 3 preguntas tipo examen sobre ${{ farm:'este fármaco', enf:'esta enfermedad', gen:'este tema' }[r.k]}.`)}">${I('spark',16)}Preguntale a la IA</button><button class="btn" data-act="fi-edit" data-id="${x.id}">${I('edit',16)}Editar</button><button class="btn" style="color:var(--danger)" data-act="fi-del" data-id="${x.id}">${I('trash',16)}Eliminar</button></div>`); },
+  'col-pick': (d, el) => { $('#col-v').value = d.c; $('#col-sw').querySelectorAll('.sw').forEach(b => b.setAttribute('aria-pressed', String(b === el))); },
+  'fi-carpeta': d => { FI.carpeta = d.id; render(); },
+  'fi-carpetas': () => carpetasModal(),
+  'cp-del': (d, el) => { if (!armed(el)) return; S.carpetas = S.carpetas.filter(c => c.id !== d.id); fiTodas().forEach(x => { if (x.carpetas) x.carpetas = x.carpetas.filter(i => i !== d.id); }); if (FI.carpeta === d.id) FI.carpeta = ''; save(); render(); carpetasModal(); },
+  'cp-toggle': (d, el) => { const on = el.getAttribute('aria-pressed') !== 'true'; el.setAttribute('aria-pressed', String(on)); el.classList.toggle('on', on); },
+  'cp-crear': () => { const inp = $('#cp-nueva'), c = nuevaCarpeta(inp.value); if (!c){ inp.focus(); return; } save(); $('#ff-cps').outerHTML = carpetaChips([...new Set([...leerCarpetas(), c.id])]); },
+  'campo-add': () => { const l = $('#cp-list'); l.insertAdjacentHTML('beforeend', campoRow({ l:'', v:'' })); l.lastElementChild.querySelector('.campo-l').focus(); },
+  'campo-del': (d, el) => { const r = el.closest('.campo'); if ((r.querySelector('.campo-v').value.trim() || r.querySelector('.campo-l').value.trim()) && !armed(el, '¿Sacar?')) return; r.remove(); },
+  'campo-up': (d, el) => { const r = el.closest('.campo'), prev = r.previousElementSibling; if (prev) r.parentNode.insertBefore(r, prev); },
+  'plantilla-nueva': () => { const b = $('#pl-nueva'); b.hidden = !b.hidden; if (!b.hidden) $('#pl-n').focus(); },
+  'plantilla-ok': () => { const inp = $('#pl-n'), nombre = inp.value.trim().slice(0, 40), cs = leerCampos().map(c => c.l); if (!nombre || !cs.length){ inp.focus(); return; }
+    const ex = S.plantillas.find(p => norm(p.nombre) === norm(nombre)); if (ex) ex.campos = cs; else S.plantillas.push({ id: uid(), nombre, campos: cs });
+    save(); $('#pl-nueva').hidden = true; inp.value = ''; const sel = document.querySelector('[data-change="plantilla"]'); if (sel) sel.innerHTML = plantillaOpts();
+    toast(`Guardé la plantilla “${nombre}”: la vas a encontrar en “Usar plantilla”.`); },
+  'fi-share': () => fiShareModal(),
+  'fi-share-gen': () => fiShareGen(),
+  'fi-recv': () => recibirModal('fichas'),
+  'tm-share': () => tmShareModal(),
+  'tm-share-gen': () => tmShareGen(),
+  'tm-recv': () => recibirModal('terminos'),
+  'tm-global': (d, el) => tmGlobal(el),
+  'rc-ok': (d, el) => recibirOk(d.que, el),
+  'sh-copy': (d, el) => { const box = $('#sh-code');
+    const selectIt = () => { const r = document.createRange(); r.selectNodeContents(box); const s = getSelection(); s.removeAllRanges(); s.addRange(r); el.textContent = 'Seleccionado: copialo con Ctrl+C'; };
+    try { navigator.clipboard.writeText(SH.msg).then(() => { el.innerHTML = I('check',14) + 'Copiado'; }, selectIt); } catch (e) { selectIt(); } },
+  'sh-send': () => { try { navigator.share({ title: 'MedNoe', text: SH.msg }).catch(() => {}); } catch (e) {} },
   'fi-edit': d => { const r = fichaFind(d.id); if (r) fichaForm(r.k, r.x); },
-  'fi-del': (d, el) => { if (!armed(el)) return; ['farmacos', 'enfermedades'].forEach(k => { S.fichas[k] = S.fichas[k].filter(x => x.id !== d.id); }); save(); closeModal(); render(); },
+  'fi-del': (d, el) => { if (!armed(el)) return; ['farmacos', 'enfermedades', 'generales'].forEach(k => { S.fichas[k] = S.fichas[k].filter(x => x.id !== d.id); }); save(); closeModal(); render(); },
   'fi-cards': d => { const r = fichaFind(d.id); if (!r) return; const T = FI_TIPOS[r.k], x = r.x, msg = $('#fi-msg');
     const mId = mat(x.materiaId) ? x.materiaId : (cursando()[0] || {}).id;
     if (!mId){ msg.textContent = 'Primero agregá una materia.'; return; }
     const have = new Set(S.cards.filter(c => c.materiaId === mId).map(c => norm(c.term))), uId = guessUnit(mId, x, T); let n = 0;
-    T.campos.forEach(([k, l]) => { if (!x[k]) return; const term = `${x.nombre}: ${l.toLowerCase()}`; if (have.has(norm(term))) return; S.cards.push({ id: uid(), materiaId: mId, u: uId, term, def: x[k], propia: true, ficha: x.id, box: 1, ok: 0, bad: 0 }); n++; });
+    camposDe(x, r.k).forEach(c => { if (!c.v) return; const term = `${x.nombre}: ${c.l.toLowerCase()}`; if (have.has(norm(term))) return; S.cards.push({ id: uid(), materiaId: mId, u: uId, term, def: c.v, propia: true, ficha: x.id, box: 1, ok: 0, bad: 0 }); n++; });
     save(); P.queue = []; msg.style.color = 'var(--ok)'; msg.textContent = n ? `Listo: ${n} flashcards nuevas en ${matName(mId)}.` : 'Las flashcards de esta ficha ya estaban creadas.'; },
   'fi-ai': async (d, el) => {
     const T = FI_TIPOS[d.k], nombre = $('#ff-nombre').value.trim(), msg = $('#ff-msg');
     if (!nombre){ msg.textContent = 'Escribí primero el nombre.'; return; }
     if (!sample){ msg.textContent = 'Completar con IA funciona cuando abrís la app desde Claude.'; return; }
+    const filas = [...document.querySelectorAll('#cp-list .campo')].filter(f => f.querySelector('.campo-l').value.trim());
+    if (!filas.length){ msg.textContent = 'Agregá al menos un campo con nombre.'; return; }
     el.disabled = true; msg.textContent = 'Buscando la información…';
     try {
-      const keys = [T.sub, ...T.campos.map(c => c[0])], ej = Object.fromEntries(keys.map(k => [k, '…']));
-      const r = await sample.json(`Armá una ficha de estudio para estudiantes de Medicina sobre ${d.k === 'farm' ? 'el fármaco' : 'la enfermedad'} "${nombre}". Español rioplatense, frases cortas y precisas, información verificable de nivel universitario. Campos: ${[T.subLbl, ...T.campos.map(c => c[1])].join(', ')}. Respondé solo un JSON con estas claves: ${JSON.stringify(ej)}`);
-      let n = 0; keys.forEach(k => { const v = r && r[k]; const box = k === T.sub ? $('#ff-sub') : $('#ff-' + k); if (v && box){ box.value = Array.isArray(v) ? v.join('; ') : String(v); n++; } });
-      msg.textContent = n ? 'Listo. Revisá la información antes de guardar: la IA puede equivocarse.' : 'No encontré información para completar. Revisá el nombre.';
+      const claves = [T.subLbl, ...filas.map(f => f.querySelector('.campo-l').value.trim())], ej = Object.fromEntries(claves.map(k => [k, '…']));
+      const r = await sample.json(`Armá una ficha de estudio para estudiantes de Medicina sobre ${T.sobre} "${nombre}". Español rioplatense, frases cortas y precisas, información verificable de nivel universitario. Campos: ${claves.join(', ')}. Respondé solo un JSON con estas claves: ${JSON.stringify(ej)}`);
+      const txt = v => Array.isArray(v) ? v.join('; ') : String(v); let n = 0;
+      if (r && r[T.subLbl] && !$('#ff-sub').value.trim()){ $('#ff-sub').value = txt(r[T.subLbl]); n++; }
+      filas.forEach(f => { const v = r && r[f.querySelector('.campo-l').value.trim()], box = f.querySelector('.campo-v'); if (v && !box.value.trim()){ box.value = txt(v); n++; } });
+      msg.textContent = n ? 'Listo. Revisá la información antes de guardar: la IA puede equivocarse.' : 'No encontré información nueva para completar (los campos que ya tenían texto no se tocan).';
     } catch (e) { msg.textContent = aiFail(e); }
     el.disabled = false;
   },
@@ -1811,7 +2075,7 @@ Texto del examen:
     el.disabled = true; msg.textContent = 'Pensando una mnemotecnia…';
     try {
       const r = await sample.json(`Proponé una mnemotecnia en español rioplatense, fácil de recordar, para que un estudiante de Medicina se acuerde de: "${titulo}". Verificá que el contenido sea correcto y completo. Respondé solo un JSON así: {"texto": "la frase o regla", "detalle": "qué significa cada parte, en orden"}`);
-      if (r && r.texto){ $('#mf-x').value = String(r.texto); $('#mf-d').value = String(r.detalle || ''); msg.textContent = 'Listo. Revisala antes de guardar: la IA puede equivocarse.'; } else msg.textContent = 'No se me ocurrió ninguna. Probá describirlo de otra forma.';
+      if (r && r.texto){ $('#mf-x').value = String(r.texto); if (!$('#cp-list .campo')) A['campo-add'](); $('#cp-list .campo-v').value = String(r.detalle || ''); msg.textContent = 'Listo. Revisala antes de guardar: la IA puede equivocarse.'; } else msg.textContent = 'No se me ocurrió ninguna. Probá describirlo de otra forma.';
     } catch (e) { msg.textContent = aiFail(e); }
     el.disabled = false;
   },
@@ -1825,11 +2089,12 @@ Texto del examen:
   pomo: () => { const p = $('#pomo-panel'); if (!p.hidden){ p.hidden = true; return; } $('#notif').hidden = true; renderPomo(); p.hidden = false; },
   'pomo-open': () => { closeModal(); $('#notif').hidden = true; renderPomo(); $('#pomo-panel').hidden = false; },
   'pm-toggle': () => {
-    if (!PM.actx){ try { PM.actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { PM.actx = null; } }
-    try { PM.actx && PM.actx.resume && PM.actx.resume(); } catch (e) {}
+    audioPomo();
     if (PM.running){ PM.left = Math.max(0, Math.round((PM.endsAt - Date.now()) / 1000)); PM.running = false; }
     else { PM.endsAt = Date.now() + PM.left * 1000; PM.running = true; }
-    renderPomo(); pomoBtn(); },
+    pomoAgendar(); renderPomo(); pomoBtn(); },
+  'pm-sonido': () => { S.pomo.sonido = S.pomo.sonido === false; save(); if (S.pomo.sonido) audioPomo(); pomoAgendar(); renderPomo(); },
+  'pm-probar': () => { const ctx = audioPomo(); if (ctx){ try { campana(ctx, ctx.currentTime + 0.05); } catch (e) {} } },
   'pm-reset': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); } pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-skip': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); pomoSet('pausa', false); } else pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-preset': d => { S.pomo.foco = +d.f; S.pomo.pausa = +d.p; save(); if (!PM.running) PM.left = pmFull(); renderPomo(); pomoBtn(); }
@@ -1846,6 +2111,8 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#modal').hidden) closeModal();
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"][data-act]')){ e.preventDefault(); e.target.click(); }
+  // Enter en "Nueva carpeta" o en el nombre de la plantilla crea eso, sin mandar el formulario
+  if (e.key === 'Enter' && (e.target.id === 'cp-nueva' || e.target.id === 'pl-n')){ e.preventDefault(); A[e.target.id === 'cp-nueva' ? 'cp-crear' : 'plantilla-ok'](); }
 });
 document.addEventListener('change', e => {
   const t = e.target, k = t.dataset.change; if (!k) return;
@@ -1894,6 +2161,17 @@ document.addEventListener('change', e => {
   if (k === 'fe-m'){ P.fe.m = t.value; P.fe.tema = ''; render(); }
   if (k === 'fe-tema'){ P.fe.tema = t.value; render(); if (t.value === '__otro'){ const l = $('#fe-libre'); l && l.focus(); } }
   if (k === 'pm-m'){ S.pomo.materiaId = t.value; save(); }
+  if (k === 'fi-m'){ FI.m = t.value; render(); }
+  if (k === 'cp-nombre'){ const c = carpeta(t.dataset.id); if (c && t.value.trim()){ c.nombre = t.value.trim().slice(0, 40); save(); render(); } }
+  if (k === 'cp-color'){ const c = carpeta(t.dataset.id); if (c){ c.color = t.value; save(); render(); } }
+  if (k === 'sel-all'){ document.querySelectorAll(`#sel-box .sel[data-g="${t.dataset.g}"]`).forEach(x => { x.checked = t.checked; }); selContar(); }
+  if (k === 'sel-one') selContar();
+  if (k === 'plantilla' && t.value){
+    const pl = t.value[0] === 'b' ? PLANTILLAS[+t.value.slice(1)][1] : (S.plantillas.find(p => p.id === t.value.slice(1)) || {}).campos || [], antes = leerCampos();
+    const nuevos = pl.map(l => ({ l, v: (antes.find(c => norm(c.l) === norm(l)) || {}).v || '' }));
+    const resto = antes.filter(c => c.v && !pl.some(l => norm(l) === norm(c.l)));
+    $('#cp-list').innerHTML = [...nuevos, ...resto].map(campoRow).join(''); t.value = ''; }
+  if (k === 'col-otro'){ $('#col-v').value = t.value; $('#col-sw').querySelectorAll('.sw').forEach(b => b.setAttribute('aria-pressed', 'false')); }
 });
 document.addEventListener('input', e => {
   const t = e.target;
@@ -1906,13 +2184,14 @@ document.addEventListener('input', e => {
 document.addEventListener('submit', e => {
   const f = e.target, k = f.dataset.form; if (!k) return;
   if (k === 'ficha'){ const T = FI_TIPOS[f.dataset.k], nombre = $('#ff-nombre').value.trim(); if (!nombre) return;
-    const data = { nombre, [T.sub]: $('#ff-sub').value.trim(), materiaId: $('#ff-m').value }; T.campos.forEach(([c]) => { data[c] = $('#ff-' + c).value.trim(); });
+    const data = { nombre, [T.sub]: $('#ff-sub').value.trim(), materiaId: $('#ff-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos() };
     const ex = f.dataset.id && fichaFind(f.dataset.id);
-    if (ex) Object.assign(ex.x, data); else S.fichas[T.key].push({ id: uid(), ...data });
+    if (ex){ T.campos.forEach(([c]) => { delete ex.x[c]; }); Object.assign(ex.x, data); } else S.fichas[T.key].push({ id: uid(), ...data });
     save(); closeModal(); FI.tab = f.dataset.k; render(); if (ex) A['fi-open']({ id: ex.x.id }); }
+  if (k === 'carpeta'){ if (nuevaCarpeta($('#cpm-n').value)){ save(); render(); carpetasModal(); } return; }
   if (k === 'mnemo'){ const titulo = $('#mf-t').value.trim(), texto = $('#mf-x').value.trim(); if (!titulo || !texto) return;
-    const data = { titulo, texto, detalle: $('#mf-d').value.trim(), materiaId: $('#mf-m').value }, ex = f.dataset.id && S.mnemos.find(x => x.id === f.dataset.id);
-    if (ex) Object.assign(ex, data); else S.mnemos.push({ id: uid(), ...data }); save(); closeModal(); render(); }
+    const data = { titulo, texto, materiaId: $('#mf-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos() }, ex = f.dataset.id && S.mnemos.find(x => x.id === f.dataset.id);
+    if (ex){ delete ex.detalle; Object.assign(ex, data); } else S.mnemos.push({ id: uid(), ...data }); save(); closeModal(); render(); }
   if (k === 'clase'){ const desde = $('#cl-desde').value, hasta = $('#cl-hasta').value;
     if (!desde || !hasta || hasta <= desde){ $('#cl-err').textContent = 'La hora de fin tiene que ser posterior a la de inicio.'; return; }
     const data = { materiaId: $('#cl-m').value, dia: +$('#cl-d').value, desde, hasta, tipo: $('#cl-t').value, lugar: $('#cl-l').value.trim() }, ex = f.dataset.id && S.horario.find(x => x.id === f.dataset.id);
@@ -2094,7 +2373,7 @@ function vTerminos(){
   const body = ({ buscar:tmBuscar, flash:tmFlash, quiz:tmQuiz, mc:tmMC }[TM.tab] || tmBuscar)();
   return `<div class="stack">
     <div class="row between" style="align-items:flex-end"><div><h1>Terminología</h1><p class="small muted">${all.length} ${all.length === 1 ? 'término' : 'términos'} generales${all.length ? ` · dominás ${dom}` : ''}</p></div>
-      <div class="row">${esAdmin() ? `<button class="btn" data-act="tm-import">${I('upload',16)}Importar lista</button>` : ''}<button class="btn pri" data-act="tm-add">${I('plus',16)}Agregar término</button></div></div>
+      <div class="row"><button class="btn" data-act="tm-share">${I('share',16)}Compartir</button><button class="btn" data-act="tm-recv">${I('upload',16)}Recibir</button>${esAdmin() ? `<button class="btn" data-act="tm-import">${I('upload',16)}Importar lista</button>` : ''}<button class="btn pri" data-act="tm-add">${I('plus',16)}Agregar término</button></div></div>
     <div class="row between"><div class="tabs" role="tablist">${tabs.map(([k, l, i]) => `<button role="tab" aria-selected="${TM.tab === k}" data-act="tm-tab" data-tab="${k}"><span class="row" style="gap:6px;flex-wrap:nowrap">${I(i,16)}${l}</span></button>`).join('')}</div>
       ${cats.length ? `<select id="tm-cat" data-change="tm-cat" style="width:auto" aria-label="Filtrar por categoría"><option value="">Todas las categorías</option>${cats.map(c => `<option value="${esc(c)}" ${TM.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}</div>
     ${body}

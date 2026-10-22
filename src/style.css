@@ -10,12 +10,6 @@
   --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
   --r:14px;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0D1413; --surface:#141E1C; --surface-2:#1B2826; --fg:#E3ECE9; --muted:#93A4A0; --line:#283633;
-  --accent:#4DBEAF; --accent-fg:#06201C; --accent-soft:#163A35;
-  --warm:#E9A25C; --warm-soft:#3A2A19;
-  --ok:#4CC27F; --ok-soft:#173523; --danger:#F07263; --danger-soft:#3D1D1A; --soon:#E0AE4F;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0D1413; --surface:#141E1C; --surface-2:#1B2826; --fg:#E3ECE9; --muted:#93A4A0; --line:#283633;
   --accent:#4DBEAF; --accent-fg:#06201C; --accent-soft:#163A35;
@@ -345,3 +339,80 @@ ul.small{margin:4px 0 0;padding-left:18px;display:flex;flex-direction:column;gap
 @media (max-width:860px){.top{gap:8px}.toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 @media (max-width:600px){.week{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- Paleta azul y crema (siempre, aunque el dispositivo esté en modo oscuro) ----------
+   Cada tema redefine las variables, así todo lo que va adentro de la tarjeta (botones, barras, pastillas) toma sus colores.
+   Merino #F5EEDD · Rock Blue #84B3CE · Venice Blue #16587B · Beige #F5EFEB · Teal #567C8D */
+@supports (color:red){
+  :root{ color-scheme:light; --bg:#F5EEDD; --titulo:#84B3CE; --accent:#16587B; --accent-fg:#F5EEDD; --accent-soft:#D4E6F0; --line:#E2D8C2 }
+  #view h1, .pg-head .eyebrow{color:var(--titulo)}
+  #view .card h1{color:inherit}
+  .t-rock, .t-venice, .t-beige, .t-teal, .t-sky{background:var(--surface);color:var(--fg);border-color:var(--line)}
+  .t-rock{--surface:#84B3CE; --surface-2:#9CC2D8; --fg:#16587B; --muted:#2B6A8C; --line:#6E9FBD; --accent:#16587B; --accent-fg:#F5EEDD; --accent-soft:#B9D5E5}
+  .t-venice{--surface:#16587B; --surface-2:#22698F; --fg:#F5EEDD; --muted:#BFD7E5; --line:#3B7699; --accent:#84B3CE; --accent-fg:#0E3B53; --accent-soft:#2A6E92}
+  .t-beige{--surface:#F5EFEB; --surface-2:#E8DEDA; --fg:#567C8D; --muted:#567C8D; --line:#DCCFC9; --accent:#567C8D; --accent-fg:#F5EFEB; --accent-soft:#E0E8EC}
+  .t-teal{--surface:#567C8D; --surface-2:#668B9B; --fg:#F5EFEB; --muted:#E2EBEF; --line:#7898A7; --accent:#F5EFEB; --accent-fg:#3F6170; --accent-soft:#6E91A0}
+  .t-sky{--surface:#C8D9E6; --surface-2:#B4CADB; --fg:#2F4156; --muted:#40576E; --line:#A8C0D2; --accent:#2F4156; --accent-fg:#F5EFEB; --accent-soft:#DCE7EF}
+  /* Encabezado y pestañas de cada materia en Sky Blue; la pestaña elegida en azul oscuro con letras beige */
+  .tabs.t-sky{background:#C8D9E6}
+  .tabs.t-sky button{color:#2F4156}
+  .tabs.t-sky button[aria-selected="true"]{background:#2F4156;color:#F5EFEB}
+  /* En los fondos azul oscuro todas las letras van en beige, para que se lean */
+  .t-venice{--muted:#F5EEDD}
+  .t-venice .cal-day.out{opacity:.6}
+  .t-rock .cls.past{opacity:.8}
+  /* El calendario va en Venice Blue: el día de hoy y los puntos de "próximo" en azul claro */
+  .t-venice .cal-day.has{background:var(--surface-2)}
+  /* Pestañas: Materias en Rock Blue; Practicar en merino al revés (fondo azul, letras crema) */
+  .tabs.t-rock{background:#84B3CE}
+  .tabs.t-rock button{color:#16587B}
+  .tabs.t-rock button[aria-selected="true"]{background:#16587B;color:#F5EEDD}
+  .tabs.t-merino-inv{background:#84B3CE}
+  .tabs.t-merino-inv button{color:#F5EEDD}
+  .tabs.t-merino-inv button[aria-selected="true"]{background:#F5EEDD;color:#16587B}
+  .empty.t-rock{border-style:solid}
+  /* Inicio: las tarjetas Rock Blue llevan letras beige (con una sombra suave para que se lean sobre el celeste) */
+  .t-rock.crema{--fg:#F5EEDD; --muted:#F0F5F8; --line:#9DC3D9; --accent-soft:#6E9FBD; text-shadow:0 1px 2px rgba(14,59,83,.45)}
+  .t-rock.crema .btn.pri, .t-rock.crema .pill, .t-rock.crema .ev-date{text-shadow:none}
+  /* Los cuadraditos de fecha tienen fondo claro: ahí el mes va en el mismo color que el número */
+  .t-rock.crema .ev-date{background:#16587B}
+  .t-rock.crema .ev-date span{color:inherit;opacity:.85}
+  .t-rock.crema .ev.urgent .ev-date{background:var(--danger-soft)}
+  .t-rock.crema .ev.ok .ev-date{background:var(--ok-soft)}
+  /* Barra de navegación (abajo en el celular, al costado en la computadora) en Venice Blue */
+  .bottom, .side{background:#16587B;border-color:#16587B}
+  .bottom button, .side .nav-btn{color:#F5EEDD}
+  .bottom button[aria-current="page"], .side .nav-btn[aria-current="page"]{color:#F5EEDD}
+  .side .nav-btn[aria-current="page"]{background:#22698F}
+  .side .nav-btn:hover{background:#22698F;color:#F5EEDD}
+  .side .brand{color:#F5EEDD}
+  .side .brand-mark{background:#84B3CE;color:#16587B}
+  .side-foot{background:#22698F;color:#F5EEDD}
+  .bottom button[aria-current="page"]{background:#22698F}
+  .side-foot b{color:#F5EEDD!important}
+  /* Más secciones: los accesos y "Cerrar sesión" en Teal */
+  .more-grid button{background:#567C8D;border-color:#567C8D;color:#F5EFEB}
+  .more-grid button:hover{border-color:#3F6170;color:#F5EFEB;filter:brightness(1.08)}
+  .btn.t-teal{background:#567C8D;border-color:#567C8D;color:#F5EFEB}
+  /* Fichas y mnemotecnias con el color que elija cada estudiante */
+  .card.tinted{background:color-mix(in srgb, var(--tint) 16%, #FFFFFF);border-color:color-mix(in srgb, var(--tint) 55%, #FFFFFF);border-top:5px solid var(--tint)}
+  .card.tinted .doc-ico{background:var(--tint);color:#FFFFFF}
+}
+/* Selector de color de fichas y mnemotecnias */
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);padding:0;display:grid;place-items:center;font-size:.7rem;color:var(--muted)}
+.sw[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:2px}
+.sw-otro{width:44px;height:32px;padding:2px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+/* Fichero: carpetas y filtro por materia */
+div.f{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.88rem}
+.fichero{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.fichero .chip{display:inline-flex;align-items:center;gap:6px}
+/* Campos editables de cada ficha */
+.campo{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.campo .campo-l{font-weight:600}
+/* Elegir qué compartir */
+.sel-box{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px 6px}
+.sel-h,.sel-i{display:flex;gap:8px;align-items:center;padding:6px 0}
+.sel-h{border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1}
+.sel-i{padding-left:6px;font-weight:500}
+.sel-box input[type=checkbox]{width:auto;flex:none}
