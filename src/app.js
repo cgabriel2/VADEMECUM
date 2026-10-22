@@ -844,23 +844,174 @@ $('#ai-form').addEventListener('submit', e => { e.preventDefault(); aiSend($('#a
 let DEL = null;
 const closeX = () => `<button class="btn ghost sm" type="button" data-act="close-modal" aria-label="Cerrar">${I('x',16)}</button>`;
 function unitsToolbar(m){
-  return `<div class="row between" style="margin-bottom:12px"><span class="small muted">${R.edit ? 'Editando: los cambios se guardan solos' : 'Tildá lo que ya estudiaste'}</span>
-    <div class="row"><button class="btn sm" data-act="import-prog" data-m="${m.id}">${I('list',15)}Importar programa</button>
+  const hay = units(m.id).length, deshacer = UNDO && UNDO.m === m.id;
+  return `<div class="row between" style="margin-bottom:12px;align-items:flex-start"><span class="small muted">${R.edit ? 'Editando: los cambios se guardan solos. Con “Mover…” pasás un tema a otra unidad.' : 'Tildá lo que ya estudiaste'}</span>
+    <div class="row">${deshacer ? `<button class="btn sm" data-act="prog-undo" data-m="${m.id}">${I('redo',15)}Deshacer</button>` : ''}
+    ${hay ? `<button class="btn sm" data-act="prog-ordenar" data-m="${m.id}">${I('spark',15)}Ordenar automáticamente</button>` : ''}
+    <button class="btn sm" data-act="import-prog" data-m="${m.id}">${I('list',15)}Importar programa</button>
     <button class="btn sm ${R.edit ? 'pri' : ''}" data-act="mat-edit">${R.edit ? I('check',15) + 'Listo' : I('edit',15) + 'Editar unidades y temas'}</button></div></div>`;
 }
+const corto = (s, n = 28) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 function unitsEditor(m){
   const us = units(m.id);
   return `<div class="stack" style="gap:10px">${us.map((u, i) => `<div class="ed-unit">
     <div class="ed-row"><span class="num muted small" style="width:28px;flex:none">U${i+1}</span>
       <input type="text" id="eu-${u.id}" value="${esc(u.nombre)}" data-change="ed-unit" data-m="${m.id}" data-u="${u.id}" aria-label="Nombre de la unidad">
-      <button class="icon-btn" data-act="ed-move" data-m="${m.id}" data-u="${u.id}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Subir unidad">${I('up',16)}</button>
-      <button class="icon-btn" data-act="ed-move" data-m="${m.id}" data-u="${u.id}" data-d="1" ${i === us.length - 1 ? 'disabled' : ''} aria-label="Bajar unidad">${I('down',16)}</button>
+      <select class="ed-act" data-change="ed-unit-act" data-m="${m.id}" data-u="${u.id}" aria-label="Mover o acomodar la unidad ${i+1}"><option value="">Mover…</option>${i > 0 ? '<option value="up">Subir la unidad</option>' : ''}${i < us.length - 1 ? '<option value="down">Bajar la unidad</option>' : ''}${i > 0 ? '<option value="join">Pasarla a la unidad de arriba (su nombre queda como tema)</option>' : ''}</select>
       <button class="icon-btn danger ${DEL === u.id ? 'confirm' : ''}" data-act="ed-del-unit" data-m="${m.id}" data-u="${u.id}" aria-label="Eliminar unidad">${DEL === u.id ? '¿Eliminar unidad?' : I('trash',16)}</button></div>
-    ${u.temas.map(t => `<div class="ed-row" style="padding-left:34px"><input type="text" id="et-${t.id}" value="${esc(t.nombre)}" data-change="ed-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Tema"><button class="icon-btn danger" data-act="ed-del-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Eliminar tema">${I('x',16)}</button></div>`).join('')}
+    ${u.temas.map((t, j) => `<div class="ed-row" style="padding-left:34px"><input type="text" id="et-${t.id}" value="${esc(t.nombre)}" data-change="ed-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Tema">
+      <select class="ed-act" data-change="ed-topic-act" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Mover o acomodar este tema"><option value="">Mover…</option>
+        ${i > 0 || j > 0 ? '<option value="up">Subir</option>' : ''}${i < us.length - 1 || j < u.temas.length - 1 ? '<option value="down">Bajar</option>' : ''}
+        ${j > 0 ? '<option value="merge">Unir con el tema de arriba</option>' : ''}
+        <option value="unit">Convertir en unidad nueva${j < u.temas.length - 1 ? ' (con los temas de abajo)' : ''}</option>
+        ${us.length > 1 ? `<optgroup label="Pasar a otra unidad">${us.map((x, k) => x.id === u.id ? '' : `<option value="to:${x.id}">U${k+1} · ${esc(corto(x.nombre))}</option>`).join('')}</optgroup>` : ''}</select>
+      <button class="icon-btn danger" data-act="ed-del-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Eliminar tema">${I('x',16)}</button></div>`).join('')}
     <form class="ed-row" style="padding-left:34px" data-form="ed-add-topic" data-m="${m.id}" data-u="${u.id}"><input type="text" id="en-${u.id}" placeholder="Agregar tema…" aria-label="Nuevo tema"><button class="icon-btn" type="submit" aria-label="Agregar tema">${I('plus',16)}</button></form>
   </div>`).join('')}
   <button class="btn" style="align-self:flex-start" data-act="add-unidad" data-m="${m.id}">${I('plus',16)}Agregar unidad</button></div>`;
 }
+// Mover temas y unidades sin reescribir el programa
+function edTopicAct(mId, uId, tId, op){
+  const us = units(mId), i = us.findIndex(x => x.id === uId), u = us[i]; if (!u) return;
+  const j = u.temas.findIndex(x => x.id === tId), t = u.temas[j]; if (!t) return;
+  if (op === 'up'){ if (j > 0) [u.temas[j - 1], u.temas[j]] = [u.temas[j], u.temas[j - 1]]; else if (i > 0){ u.temas.splice(j, 1); us[i - 1].temas.push(t); } }
+  else if (op === 'down'){ if (j < u.temas.length - 1) [u.temas[j], u.temas[j + 1]] = [u.temas[j + 1], u.temas[j]]; else if (i < us.length - 1){ u.temas.splice(j, 1); us[i + 1].temas.unshift(t); } }
+  else if (op === 'merge' && j > 0){ const p = u.temas[j - 1]; p.nombre = `${p.nombre} ${t.nombre}`.replace(/\s+/g, ' ').trim(); p.ok = !!(p.ok && t.ok); u.temas.splice(j, 1); }
+  else if (op === 'unit'){ const resto = u.temas.splice(j); resto.shift(); us.splice(i + 1, 0, { id: uid(), nombre: t.nombre, temas: resto }); }
+  else if (op.startsWith('to:')){ const dest = us.find(x => x.id === op.slice(3)); if (dest){ u.temas.splice(j, 1); dest.temas.push(t); } }
+  save(); render();
+}
+function edUnitAct(mId, uId, op){
+  const us = units(mId), i = us.findIndex(x => x.id === uId); if (i < 0) return;
+  if (op === 'up' || op === 'down'){ const k = i + (op === 'up' ? -1 : 1); if (k < 0 || k >= us.length) return; [us[i], us[k]] = [us[k], us[i]]; }
+  else if (op === 'join' && i > 0){ const u = us[i]; us[i - 1].temas.push({ id: uid(), nombre: u.nombre, ok: false }, ...u.temas); us.splice(i, 1); S.eventos.forEach(e => { if (e.unidades) e.unidades = e.unidades.filter(x => x !== u.id); }); }
+  save(); render();
+}
+
+/* ---------- ordenar un programa desordenado (sin IA) ----------
+   Junta los renglones cortados, reconoce los títulos de unidad (Unidad 1, Bolilla 2, Semana 25-05…)
+   y separa los temas que vienen todos seguidos en un párrafo. */
+const PROG_CAB = /^(unidad(es)?|u\.|m[oó]dulo|bloque|eje|cap[ií]tulo|bolilla|semana|clase|tema|parte|n[uú]cleo)\s*(n[º°o]\.?\s*)?(\d{1,2}\s*[-/.]\s*\d{1,2}|\d+|[IVXLC]+)\b/i;
+const PROG_ETIQ = /^(unidad(es)?|u\.|m[oó]dulo|bloque|eje|cap[ií]tulo|bolilla|tema|parte|n[uú]cleo)\s*(n[º°o]\.?\s*)?(\d+|[IVXLC]+)\s*[:.\-–)]?\s*/i;
+const PROG_VIÑETA = /^([-–•*·▪►✓]|\d+(\.\d+)*[.)]\s|[a-z]\)\s)/;
+function ordenarPrograma(txt){
+  let lineas = String(txt || '').replace(/\r/g, '').split('\n').map(s => s.replace(/\s+/g, ' ').trim())
+    .filter(s => s && !/^\d{1,3}$/.test(s) && !/^p[aá]g(ina)?\.?\s*\d+(\s*(de|\/)\s*\d+)?$/i.test(s));
+  const esCab = l => PROG_CAB.test(l) || (l.length < 80 && /:$/.test(l));
+  const mayus = l => l.length < 70 && /[A-ZÁÉÍÓÚÑ]{3}/.test(l) && l === l.toUpperCase() && l.split(' ').length >= 2;
+  const usarMayus = lineas.filter(l => PROG_CAB.test(l)).length < 2;
+  const cab = l => esCab(l) || (usarMayus && mayus(l));
+  // 1. renglones cortados: se pegan al anterior
+  const parrafos = [];
+  lineas.forEach(l => {
+    const prev = parrafos[parrafos.length - 1];
+    const sigue = prev && !cab(l) && !PROG_VIÑETA.test(l) && !/[.;:!?]$/.test(prev.t) && (/^[a-záéíóúñü(]/.test(l) || /[,y]$/.test(prev.t) || / (de|del|la|las|el|los|y|e|o|u|para|por|con|sin|en|a|al|su|sus)$/i.test(prev.t));
+    if (sigue) prev.t += ' ' + l; else parrafos.push({ t: l, cab: cab(l) });
+  });
+  // 2. unidades y temas
+  const out = [], frases = s => s.replace(/([.;])\s+(?=[A-ZÁÉÍÓÚÑ¿(0-9])/g, '$1\n').replace(/\s[•▪·►]\s/g, '\n').split('\n').map(x => x.replace(/^[-–•*·▪►✓]+\s*/, '').replace(/^\d+(\.\d+)*[.)]\s+/, '').replace(/^[a-z]\)\s+/, '').replace(/[.;:,\s]+$/, '').trim()).filter(x => x.length > 1);
+  // lo que viene antes del primer título (nombre de la materia, cátedra, año) se descarta si es corto
+  const primera = parrafos.findIndex(p => p.cab);
+  if (primera > 0 && primera <= 4 && parrafos.slice(0, primera).every(p => p.t.length < 100)) parrafos.splice(0, primera);
+  let sinNombre = null;
+  parrafos.forEach(p => {
+    if (p.cab){
+      const sinEtiq = p.t.replace(PROG_ETIQ, '').replace(/:$/, '').trim(), fs = frases(sinEtiq || p.t);
+      const u = { nombre: fs.shift() || p.t.replace(/:$/, ''), temas: fs }; out.push(u);
+      // "UNIDAD 1" solo en un renglón y el título en el siguiente
+      sinNombre = !sinEtiq && PROG_ETIQ.test(p.t) ? u : null;
+    } else if (sinNombre && p.t.length < 100){
+      const fs = frases(p.t); sinNombre.nombre = fs.shift() || sinNombre.nombre; sinNombre.temas.push(...fs); sinNombre = null;
+    } else {
+      sinNombre = null;
+      if (!out.length) out.push({ nombre: 'Unidad 1', temas: [] });
+      out[out.length - 1].temas.push(...frases(p.t));
+    }
+  });
+  return out.filter(u => u.temas.length || !/^(unidad|u\.)\s*\d*$/i.test(u.nombre.trim()));
+}
+const programaTexto = us => us.map((u, i) => `Unidad ${i + 1}: ${u.nombre}\n${u.temas.map(t => '- ' + (t.nombre || t)).join('\n')}`).join('\n\n');
+// Texto de las unidades que ya están cargadas, tal cual, para volver a ordenarlo
+const programaCrudo = us => us.map((u, i) => [PROG_CAB.test(u.nombre) && u.nombre.replace(PROG_ETIQ, '').trim() ? u.nombre : `Unidad ${i + 1}: ${u.nombre}`, ...u.temas.map(t => t.nombre)].join('\n')).join('\n');
+let UNDO = null;
+// Al reordenar se conserva lo tildado: un tema nuevo queda tildado si casi todo su texto venía de temas tildados
+function marcasTildadas(us){
+  const ok = new Set(), todo = []; us.forEach(u => { todo.push(...norm(u.nombre).split(' ').map(w => [w, false])); u.temas.forEach(t => todo.push(...norm(t.nombre).split(' ').map(w => [w, !!t.ok]))); });
+  const pal = todo.filter(([w]) => w);
+  for (let i = 0; i < pal.length - 1; i++) if (pal[i][1] && pal[i + 1][1]) ok.add(pal[i][0] + ' ' + pal[i + 1][0]);
+  const sueltas = new Set(pal.filter(x => x[1]).map(x => x[0])), noOk = new Set(pal.filter(x => !x[1]).map(x => x[0]));
+  return nombre => { const ws = norm(nombre).split(' ').filter(Boolean); if (!ws.length) return false;
+    if (ws.length === 1) return sueltas.has(ws[0]) && !noOk.has(ws[0]);
+    let si = 0; for (let i = 0; i < ws.length - 1; i++) if (ok.has(ws[i] + ' ' + ws[i + 1])) si++;
+    return si / (ws.length - 1) >= 0.7; };
+}
+function ordenarExistente(mId){
+  const antes = units(mId), nuevo = ordenarPrograma(programaCrudo(antes)); if (!nuevo.length) return 0;
+  const viejos = antes.flatMap(u => u.temas), tildado = marcasTildadas(antes);
+  UNDO = { m: mId, us: JSON.parse(JSON.stringify(antes)) };
+  S.unidades[mId] = nuevo.map((u, i) => { const vieja = antes[i] && norm(antes[i].nombre) === norm(u.nombre) ? antes[i] : antes.find(a => norm(a.nombre) === norm(u.nombre));
+    return { id: vieja ? vieja.id : uid(), nombre: u.nombre, temas: u.temas.map(n => { const igual = viejos.find(t => norm(t.nombre) === norm(n));
+      return { id: igual ? igual.id : uid(), nombre: n, ok: igual ? !!igual.ok : tildado(n) }; }) }; });
+  save(); return S.unidades[mId].length;
+}
+
+/* ---------- leer el programa desde un PDF o una foto ---------- */
+async function pdfLineas(file, aviso){
+  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, n = Math.min(doc.numPages, 40), out = [];
+  for (let i = 1; i <= n; i++){
+    aviso(`Leyendo la página ${i} de ${n}…`);
+    const c = await (await doc.getPage(i)).getTextContent(); let linea = '', y0 = null;
+    c.items.forEach(it => { const y = it.transform ? it.transform[5] : y0;
+      if (y0 !== null && Math.abs(y - y0) > 3 && linea.trim()){ out.push(linea); linea = ''; }
+      linea += (linea && !/\s$/.test(linea) && !/^\s/.test(it.str) ? ' ' : '') + it.str; y0 = y;
+      if (it.hasEOL){ out.push(linea); linea = ''; y0 = null; } });
+    if (linea.trim()) out.push(linea);
+  }
+  const texto = out.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+  if (texto.replace(/\s/g, '').length > 40) return texto;
+  // PDF escaneado (son fotos): se dibuja cada página y se lee como imagen
+  const paginas = [];
+  for (let i = 1; i <= Math.min(doc.numPages, 12); i++){ const p = await doc.getPage(i), v = p.getViewport({ scale: 2 }), cv = document.createElement('canvas'); cv.width = v.width; cv.height = v.height; await p.render({ canvasContext: cv.getContext('2d'), viewport: v }).promise; paginas.push(cv); }
+  return ocr(paginas, aviso);
+}
+let ocrReady = null;
+function loadOcr(){
+  if (!ocrReady){ ocrReady = loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js').then(() => window.Tesseract); ocrReady.catch(() => { ocrReady = null; }); }
+  return ocrReady;
+}
+// Las fotos del celular son enormes: se achican antes de leerlas para que sea más rápido
+function achicar(file){
+  return new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 2200 / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); res(cv); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen')); }; img.src = url; });
+}
+async function ocr(imagenes, aviso){
+  aviso('Preparando el lector de imágenes (la primera vez tarda un poco más)…');
+  const T = await loadOcr(); let i = 0;
+  const w = await T.createWorker('spa', 1, { logger: x => { if (x.status === 'recognizing text') aviso(`Leyendo ${imagenes.length > 1 ? `la imagen ${i + 1} de ${imagenes.length}` : 'la imagen'}… ${Math.round((x.progress || 0) * 100)} %`); } });
+  let out = '';
+  try { for (; i < imagenes.length; i++){ const { data } = await w.recognize(imagenes[i]); out += data.text + '\n'; } } finally { await w.terminate(); }
+  return out;
+}
+let IP = { crudo:'' };
+async function ipArchivos(input){
+  const files = [...input.files], msg = $('#ip-msg'), ta = $('#ip-t'), aviso = s => { msg.style.color = 'var(--muted)'; msg.textContent = s; };
+  if (!files.length) return;
+  const btns = document.querySelectorAll('#modal button'); btns.forEach(b => { b.disabled = true; });
+  try {
+    let texto = '';
+    const pdfs = files.filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf'), imgs = files.filter(f => f.type.startsWith('image/'));
+    for (const f of pdfs) texto += await pdfLineas(f, aviso) + '\n';
+    if (imgs.length){ const cvs = []; for (const f of imgs) cvs.push(await achicar(f)); texto += await ocr(cvs, aviso); }
+    texto = texto.trim();
+    if (texto.replace(/\s/g, '').length < 20){ msg.style.color = 'var(--danger)'; msg.textContent = 'No pude leer texto en ese archivo. Probá con una foto más nítida, de frente y con buena luz.'; return; }
+    IP.crudo = (ta.value.trim() ? ta.value.trim() + '\n' : '') + texto;
+    const us = ordenarPrograma(IP.crudo); ta.value = programaTexto(us);
+    msg.style.color = 'var(--ok)'; msg.innerHTML = `Listo: encontré ${us.length} ${us.length === 1 ? 'unidad' : 'unidades'} y ${us.reduce((a, u) => a + u.temas.length, 0)} temas. Revisalo y tocá “Importar”. Después podés mover cualquier tema con “Mover…”. <button type="button" class="btn ghost sm" data-act="ip-crudo">Ver el texto sin ordenar</button>`;
+  } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = 'No pude leer el archivo. Revisá tu conexión e intentá de nuevo.'; }
+  finally { btns.forEach(b => { b.disabled = false; }); input.value = ''; }
+}
+
 function parseProgram(txt){
   const out = [], UN = /^(unidad|m[oó]dulo|bloque|eje|cap[ií]tulo)\b/i;
   txt.split('\n').map(s => s.trim()).filter(Boolean).forEach(l => {
@@ -1868,18 +2019,27 @@ Evaluá si el concepto es correcto aunque use otras palabras. Respondé solo un 
     if (S.pomo.materiaId === id) S.pomo.materiaId = '';
     P.m = 'todas'; P.queue = []; P.quiz = null; P.cq = null; HS = null; if (SIM && !SIM.done && SIM.cfg.m === id){ clearInterval(simTick); SIM = null; }
     save(); closeModal(); go('materias'); },
-  'mat-edit': () => { R.edit = !R.edit; DEL = null; render(); },
+  'mat-edit': () => { R.edit = !R.edit; DEL = null; if (!R.edit) UNDO = null; render(); },
   'ed-del-topic': d => { const u = units(d.m).find(x => x.id === d.u); u.temas = u.temas.filter(x => x.id !== d.t); save(); render(); },
   'ed-del-unit': d => { if (DEL !== d.u){ DEL = d.u; return render(); }
     S.unidades[d.m] = units(d.m).filter(x => x.id !== d.u); S.eventos.forEach(e => e.unidades = e.unidades.filter(x => x !== d.u)); DEL = null; save(); render(); },
   'ed-move': d => { const a = units(d.m), i = a.findIndex(x => x.id === d.u), j = i + Number(d.d); if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; save(); render(); },
-  'import-prog': d => modal(`<div class="row between"><h2>Importar programa</h2>${closeX()}</div>
-    <p class="small muted">Pegá el programa de la materia tal como lo da la cátedra. Formato: una línea por unidad (que empiece con “Unidad” o termine en “:”) y debajo sus temas. Si está desordenado, tocá “Ordenar con IA” primero.</p>
+  'import-prog': d => { IP.crudo = ''; modal(`<div class="row between"><h2>Importar programa</h2>${closeX()}</div>
+    <p class="small muted">Subí el programa en PDF o sacale fotos, o pegalo abajo. La app lo lee, lo acomoda en unidades y temas, y vos lo revisás antes de importar.</p>
+    <label class="drop" for="ip-file">${I('upload',22)}<b>Subir PDF o fotos del programa</b><span class="small">Podés elegir varias fotos a la vez (una por página). Funciona mejor con fotos derechas, nítidas y con buena luz.</span></label>
+    <input type="file" id="ip-file" data-change="ip-file" hidden multiple accept=".pdf,application/pdf,image/*">
     <form class="stack" style="gap:12px" data-form="import-prog" data-m="${d.m}">
     <textarea id="ip-t" style="min-height:200px" placeholder="Unidad 1: Generalidades&#10;- Planos y ejes anatómicos&#10;- Clasificación de los huesos&#10;Unidad 2: Miembro superior&#10;- Plexo braquial"></textarea>
-    <div class="stack small" style="gap:6px"><label class="row" style="gap:8px"><input type="radio" name="ip-mode" id="ip-r" checked>Reemplazar las unidades actuales (se borra lo tildado y las fechas quedan sin unidades)</label><label class="row" style="gap:8px"><input type="radio" name="ip-mode" id="ip-a">Agregar al final de las actuales</label></div>
+    <div class="stack small" style="gap:6px"><label class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start"><input type="radio" name="ip-mode" id="ip-r" checked>Reemplazar las unidades actuales (se borra lo tildado y las fechas quedan sin unidades)</label><label class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start"><input type="radio" name="ip-mode" id="ip-a">Agregar al final de las actuales</label></div>
     <p class="small muted" id="ip-msg"></p>
-    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="ip-ai">${I('spark',16)}Ordenar con IA</button><button class="btn pri" type="submit">Importar</button></div></form>`),
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="ip-ordenar">${I('list',16)}Ordenar</button>${sample ? `<button class="btn" type="button" data-act="ip-ai">${I('spark',16)}Ordenar con IA</button>` : ''}<button class="btn pri" type="submit">Importar</button></div></form>`); },
+  'ip-ordenar': () => { const ta = $('#ip-t'), msg = $('#ip-msg'); if (!ta.value.trim()){ msg.textContent = 'Primero subí un archivo o pegá el programa.'; return; }
+    if (!IP.crudo) IP.crudo = ta.value; const us = ordenarPrograma(ta.value); if (!us.length){ msg.textContent = 'No encontré unidades ni temas en el texto.'; return; }
+    ta.value = programaTexto(us); msg.style.color = 'var(--ok)';
+    msg.innerHTML = `Listo: ${us.length} ${us.length === 1 ? 'unidad' : 'unidades'} y ${us.reduce((a, u) => a + u.temas.length, 0)} temas. Revisalo y tocá “Importar”. <button type="button" class="btn ghost sm" data-act="ip-crudo">Ver el texto sin ordenar</button>`; },
+  'ip-crudo': () => { if (!IP.crudo) return; $('#ip-t').value = IP.crudo; const msg = $('#ip-msg'); msg.style.color = 'var(--muted)'; msg.textContent = 'Este es el texto tal cual estaba. Podés corregirlo y tocar “Ordenar” de nuevo.'; },
+  'prog-ordenar': d => { const k = ordenarExistente(d.m); R.edit = true; render(); toast(k ? `Listo: quedaron ${k} ${k === 1 ? 'unidad' : 'unidades'}. Si no te gusta cómo quedó, tocá “Deshacer”.` : 'No encontré nada para ordenar.'); },
+  'prog-undo': d => { if (!UNDO || UNDO.m !== d.m) return; S.unidades[d.m] = UNDO.us; UNDO = null; save(); render(); toast('Volvió a quedar como estaba.'); },
   'ip-ai': async (d, el) => { const ta = $('#ip-t'), msg = $('#ip-msg');
     if (!ta.value.trim()){ msg.textContent = 'Primero pegá el programa.'; return; }
     if (!sample){ msg.textContent = 'Ordenar con IA funciona cuando abrís la app desde Claude. Mientras tanto podés usar el formato de arriba.'; return; }
@@ -2121,6 +2281,9 @@ document.addEventListener('change', e => {
   if (k === 'estado'){ const m = mat(t.dataset.id); m.estado = t.value; if ((m.estado === 'cursando' || m.estado === 'regular') && !m.color) m.color = '#3D7F74'; if (m.estado === 'regular' && !m.regularHasta) m.regularHasta = addD(730); save(); render(); }
   if (k === 'anio'){ S.perfil.anioActual = +t.value; save(); render(); }
   if (k === 'upload') handleUpload(t);
+  if (k === 'ip-file') ipArchivos(t);
+  if (k === 'ed-topic-act' && t.value) edTopicAct(t.dataset.m, t.dataset.u, t.dataset.t, t.value);
+  if (k === 'ed-unit-act' && t.value) edUnitAct(t.dataset.m, t.dataset.u, t.value);
   if (k === 'ed-unit'){ const u = units(t.dataset.m).find(x => x.id === t.dataset.u); if (u && t.value.trim()) u.nombre = t.value.trim(); save(); }
   if (k === 'ed-topic'){ const u = units(t.dataset.m).find(x => x.id === t.dataset.u), tp = u && u.temas.find(x => x.id === t.dataset.t); if (tp && t.value.trim()) tp.nombre = t.value.trim(); save(); }
   if (k === 'notif-dias'){ S.notif.dias = +t.value; save(); renderBell(); renderNotif(); }
@@ -2141,7 +2304,8 @@ document.addEventListener('submit', e => {
   if (k === 'ed-add-topic'){ const inp = f.querySelector('input'), v = inp.value.trim(); if (!v) return;
     units(f.dataset.m).find(x => x.id === f.dataset.u).temas.push({ id: uid(), nombre: v, ok:false }); save(); render();
     const n = document.getElementById('en-' + f.dataset.u); n && n.focus(); }
-  if (k === 'import-prog'){ const us = parseProgram($('#ip-t').value), m = f.dataset.m;
+  if (k === 'import-prog'){ const txt = $('#ip-t').value, m = f.dataset.m;
+    const us = /^\s*-\s/m.test(txt) ? parseProgram(txt) : ordenarPrograma(txt).map(u => ({ id: uid(), nombre: u.nombre, temas: u.temas.map(t => ({ id: uid(), nombre: t, ok: false })) }));
     if (!us.length){ $('#ip-msg').textContent = 'No encontré unidades ni temas en el texto.'; return; }
     if ($('#ip-r').checked){ S.unidades[m] = us; S.eventos.forEach(e => { if (e.materiaId === m) e.unidades = []; }); } else S.unidades[m] = [...units(m), ...us];
     save(); closeModal(); R.tab = 'unidades'; R.edit = true; render(); }
