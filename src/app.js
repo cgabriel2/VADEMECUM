@@ -476,7 +476,7 @@ function vMateria(){
   let body = '';
   if (tab === 'unidades') body = unitsToolbar(m) + (R.edit ? unitsEditor(m) : units(m.id).length ? `<div class="stack" style="gap:10px">${units(m.id).map((u, i) => { const pu = progUnit(u);
       return `<details class="unit" ${i < 3 ? 'open' : ''}><summary><span class="num muted small">U${i+1}</span><b style="flex:1">${esc(u.nombre)}</b><span class="bar ${pu.done===pu.total?'ok':''}"><i style="width:${pct(pu.done,pu.total)}%"></i></span><span class="num small muted">${pu.done}/${pu.total}</span></summary>
-      ${u.temas.map(t => `<label class="topic ${t.ok?'done':''}"><input type="checkbox" ${t.ok?'checked':''} data-change="topic" data-m="${m.id}" data-t="${t.id}"><span>${esc(t.nombre)}${hotPill(m.id, t.id)}</span></label>`).join('')}</details>`; }).join('')}</div>`
+      ${u.temas.map(t => `<label class="topic ${t.ok?'done':''}"><input type="checkbox" ${t.ok?'checked':''} data-change="topic" data-m="${m.id}" data-t="${t.id}"><span>${esc(t.nombre)}${hotPill(m.id, t.id)}${t.det ? `<small class="topic-det">${esc(t.det)}</small>` : ''}</span></label>`).join('')}</details>`; }).join('')}</div>`
     : `<div class="empty">Esta materia todavía no tiene unidades cargadas.<br>Agregalas una por una o pegá el programa de la cátedra.<div class="row" style="justify-content:center;margin-top:10px"><button class="btn sm" data-act="add-unidad" data-m="${m.id}">${I('plus',14)}Agregar unidad</button><button class="btn sm" data-act="import-prog" data-m="${m.id}">Importar programa</button></div></div>`);
   if (tab === 'biblio') body = `<div class="stack" style="gap:10px">
       <label class="drop" for="up-${m.id}">${I('upload',22)}<b>Subir apunte o PDF</b><span class="small">${IA ? 'Los PDF y archivos de texto los lee la IA para armarte preguntas, resúmenes y flashcards' : 'Tus PDF y apuntes quedan guardados en la materia y podés buscar palabras dentro de ellos'}</span></label>
@@ -854,12 +854,12 @@ function unitsToolbar(m){
 const corto = (s, n = 28) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 function unitsEditor(m){
   const us = units(m.id);
-  return `<div class="stack" style="gap:10px">${us.map((u, i) => `<div class="ed-unit">
-    <div class="ed-row"><span class="num muted small" style="width:28px;flex:none">U${i+1}</span>
+  return `<div class="stack" id="ed-units" data-m="${m.id}" style="gap:10px"><p class="small muted">Arrastrá desde ${GRIP} para mover un tema o una unidad. También podés usar el botón de flechas.</p>${us.map((u, i) => `<div class="ed-unit" data-u="${u.id}">
+    <div class="ed-row ed-uh"><span class="grip" data-grip="u" title="Arrastrá para mover la unidad" aria-hidden="true">${GRIP}</span><span class="num muted small" style="width:24px;flex:none">U${i+1}</span>
       <input type="text" id="eu-${u.id}" value="${esc(u.nombre)}" data-change="ed-unit" data-m="${m.id}" data-u="${u.id}" aria-label="Nombre de la unidad">
       <select class="ed-act" data-change="ed-unit-act" data-m="${m.id}" data-u="${u.id}" aria-label="Mover o acomodar la unidad ${i+1}"><option value="">Mover…</option>${i > 0 ? '<option value="up">Subir la unidad</option>' : ''}${i < us.length - 1 ? '<option value="down">Bajar la unidad</option>' : ''}${i > 0 ? '<option value="join">Pasarla a la unidad de arriba (su nombre queda como tema)</option>' : ''}</select>
       <button class="icon-btn danger ${DEL === u.id ? 'confirm' : ''}" data-act="ed-del-unit" data-m="${m.id}" data-u="${u.id}" aria-label="Eliminar unidad">${DEL === u.id ? '¿Eliminar unidad?' : I('trash',16)}</button></div>
-    ${u.temas.map((t, j) => `<div class="ed-row" style="padding-left:34px"><input type="text" id="et-${t.id}" value="${esc(t.nombre)}" data-change="ed-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Tema">
+    ${u.temas.map((t, j) => `<div class="ed-row ed-t" data-t="${t.id}" style="padding-left:22px"><span class="grip" data-grip="t" title="Arrastrá para mover el tema" aria-hidden="true">${GRIP}</span><span class="ed-tema"><input type="text" id="et-${t.id}" value="${esc(t.nombre)}" data-change="ed-topic" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Tema">${t.det !== undefined ? `<textarea class="ed-det" data-change="ed-topic-det" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Detalle del tema" rows="2">${esc(t.det)}</textarea>` : ''}</span>
       <select class="ed-act" data-change="ed-topic-act" data-m="${m.id}" data-u="${u.id}" data-t="${t.id}" aria-label="Mover o acomodar este tema"><option value="">Mover…</option>
         ${i > 0 || j > 0 ? '<option value="up">Subir</option>' : ''}${i < us.length - 1 || j < u.temas.length - 1 ? '<option value="down">Bajar</option>' : ''}
         ${j > 0 ? '<option value="merge">Unir con el tema de arriba</option>' : ''}
@@ -870,13 +870,71 @@ function unitsEditor(m){
   </div>`).join('')}
   <button class="btn" style="align-self:flex-start" data-act="add-unidad" data-m="${m.id}">${I('plus',16)}Agregar unidad</button></div>`;
 }
+// Arrastrar y soltar temas y unidades (mouse y pantallas táctiles, con desplazamiento automático en listas largas)
+const GRIP = '<svg width="14" height="20" viewBox="0 0 14 20" fill="currentColor"><circle cx="4" cy="4" r="1.6"/><circle cx="10" cy="4" r="1.6"/><circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="4" cy="16" r="1.6"/><circle cx="10" cy="16" r="1.6"/></svg>';
+let DRAG = null;
+function dragInicio(e, grip){
+  const caja = grip.closest('#ed-units'); if (!caja) return;
+  const tipo = grip.dataset.grip, el = tipo === 't' ? grip.closest('.ed-t') : grip.closest('.ed-unit');
+  e.preventDefault(); document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  if (tipo === 'u'){
+    // las unidades se cierran y la que agarraste queda debajo del dedo
+    const off = e.clientY - grip.getBoundingClientRect().top; caja.classList.add('compacto');
+    scrollBy(0, grip.getBoundingClientRect().top - (e.clientY - off));
+  }
+  const r = el.getBoundingClientRect(), fantasma = el.cloneNode(true), lugar = document.createElement('div');
+  if (tipo === 'u') fantasma.querySelectorAll('.ed-t, form, .ed-act, .icon-btn').forEach(x => x.remove());
+  fantasma.classList.add('drag-fantasma'); fantasma.style.width = r.width + 'px'; fantasma.style.left = r.left + 'px'; fantasma.style.top = r.top + 'px';
+  lugar.className = 'drag-lugar' + (tipo === 'u' ? ' u' : ''); lugar.style.height = (tipo === 'u' ? Math.min(r.height, 64) : r.height) + 'px';
+  el.after(lugar); el.classList.add('drag-oculto'); document.body.append(fantasma);
+  DRAG = { tipo, el, caja, fantasma, lugar, dy: e.clientY - r.top, y: e.clientY, id: e.pointerId, raf: 0 };
+  try { grip.setPointerCapture(e.pointerId); } catch (x) {}
+  const auto = () => { if (!DRAG) return; const m = 70, v = DRAG.y < m ? -(m - DRAG.y) / 3 : DRAG.y > innerHeight - m - 60 ? (DRAG.y - (innerHeight - m - 60)) / 3 : 0; if (v){ scrollBy(0, v); dragMover(DRAG.y); } DRAG.raf = requestAnimationFrame(auto); };
+  DRAG.raf = requestAnimationFrame(auto);
+}
+function dragMover(y){
+  const d = DRAG; d.y = y; d.fantasma.style.top = (y - d.dy) + 'px';
+  if (d.tipo === 'u'){
+    const us = [...d.caja.querySelectorAll('.ed-unit')].filter(x => x !== d.el);
+    const antes = us.find(x => { const r = x.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    if (antes) antes.before(d.lugar); else (us[us.length - 1] || d.el).after(d.lugar);
+    return;
+  }
+  const filas = [...d.caja.querySelectorAll('.ed-t')].filter(x => x !== d.el);
+  const antes = filas.find(x => { const r = x.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  // si el dedo está sobre una unidad sin ese tema (o vacía), el lugar va al final de esa unidad
+  const unidad = [...d.caja.querySelectorAll('.ed-unit')].find(x => { const r = x.getBoundingClientRect(); return y >= r.top && y <= r.bottom; });
+  if (antes && (!unidad || unidad.contains(antes))) antes.before(d.lugar);
+  else if (unidad) unidad.querySelector('form').before(d.lugar);
+  else if (antes) antes.before(d.lugar);
+}
+function dragFin(){
+  const d = DRAG; if (!d) return; DRAG = null; cancelAnimationFrame(d.raf);
+  const mId = d.caja.dataset.m, us = units(mId); d.fantasma.remove(); d.caja.classList.remove('compacto');
+  if (d.tipo === 'u'){
+    const orden = [...d.caja.querySelectorAll('.ed-unit, .drag-lugar')].filter(x => x !== d.el).map(x => x === d.lugar ? d.el.dataset.u : x.dataset.u);
+    S.unidades[mId] = orden.map(id => us.find(u => u.id === id)).filter(Boolean);
+  } else {
+    const de = us.find(u => u.id === d.el.closest('.ed-unit').dataset.u), destino = d.lugar.closest('.ed-unit');
+    const a = destino && us.find(u => u.id === destino.dataset.u);
+    if (de && a){ const t = de.temas.find(x => x.id === d.el.dataset.t);
+      const idx = [...destino.querySelectorAll('.ed-t, .drag-lugar')].filter(x => x !== d.el).indexOf(d.lugar);
+      de.temas = de.temas.filter(x => x !== t); a.temas.splice(Math.max(0, idx), 0, t); }
+  }
+  save(); render();
+}
+document.addEventListener('pointerdown', e => { const g = e.target.closest && e.target.closest('.grip[data-grip]'); if (g && e.button === 0) dragInicio(e, g); });
+document.addEventListener('pointermove', e => { if (DRAG && e.pointerId === DRAG.id){ e.preventDefault(); dragMover(e.clientY); } }, { passive: false });
+document.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.id) dragFin(); });
+document.addEventListener('pointercancel', e => { if (DRAG && e.pointerId === DRAG.id) dragFin(); });
+
 // Mover temas y unidades sin reescribir el programa
 function edTopicAct(mId, uId, tId, op){
   const us = units(mId), i = us.findIndex(x => x.id === uId), u = us[i]; if (!u) return;
   const j = u.temas.findIndex(x => x.id === tId), t = u.temas[j]; if (!t) return;
   if (op === 'up'){ if (j > 0) [u.temas[j - 1], u.temas[j]] = [u.temas[j], u.temas[j - 1]]; else if (i > 0){ u.temas.splice(j, 1); us[i - 1].temas.push(t); } }
   else if (op === 'down'){ if (j < u.temas.length - 1) [u.temas[j], u.temas[j + 1]] = [u.temas[j + 1], u.temas[j]]; else if (i < us.length - 1){ u.temas.splice(j, 1); us[i + 1].temas.unshift(t); } }
-  else if (op === 'merge' && j > 0){ const p = u.temas[j - 1]; p.nombre = `${p.nombre} ${t.nombre}`.replace(/\s+/g, ' ').trim(); p.ok = !!(p.ok && t.ok); u.temas.splice(j, 1); }
+  else if (op === 'merge' && j > 0){ const p = u.temas[j - 1]; p.nombre = `${p.nombre} ${t.nombre}`.replace(/\s+/g, ' ').trim(); if (t.det) p.det = [p.det, t.det].filter(Boolean).join('; '); p.ok = !!(p.ok && t.ok); u.temas.splice(j, 1); }
   else if (op === 'unit'){ const resto = u.temas.splice(j); resto.shift(); us.splice(i + 1, 0, { id: uid(), nombre: t.nombre, temas: resto }); }
   else if (op.startsWith('to:')){ const dest = us.find(x => x.id === op.slice(3)); if (dest){ u.temas.splice(j, 1); dest.temas.push(t); } }
   save(); render();
@@ -888,14 +946,23 @@ function edUnitAct(mId, uId, op){
   save(); render();
 }
 
-/* ---------- ordenar un programa desordenado (sin IA) ----------
-   Junta los renglones cortados, reconoce los títulos de unidad (Unidad 1, Bolilla 2, Semana 25-05…)
-   y separa los temas que vienen todos seguidos en un párrafo. */
 const PROG_CAB = /^(unidad(es)?|u\.|m[oó]dulo|bloque|eje|cap[ií]tulo|bolilla|semana|clase|tema|parte|n[uú]cleo)\s*(n[º°o]\.?\s*)?(\d{1,2}\s*[-/.]\s*\d{1,2}|\d+|[IVXLC]+)\b/i;
-const PROG_ETIQ = /^(unidad(es)?|u\.|m[oó]dulo|bloque|eje|cap[ií]tulo|bolilla|tema|parte|n[uú]cleo)\s*(n[º°o]\.?\s*)?(\d+|[IVXLC]+)\s*[:.\-–)]?\s*/i;
-const PROG_VIÑETA = /^([-–•*·▪►✓]|\d+(\.\d+)*[.)]\s|[a-z]\)\s)/;
+const PROG_ETIQ = /^(unidad(es)?|u\.|m[oó]dulo|bloque|eje|cap[ií]tulo|bolilla|tema|parte|n[uú]cleo)\s*(n[º°o]\.?\s*)?(\d+|[IVXLC]+)\s*[:.\-–)·|]?\s*/i;
+const PROG_VIÑETA = /^([-–•*▪►✓]|\d+(\.\d+)*[.)]\s|[a-z]\)\s)/;
+const PROG_NUM = /^\d{1,2}[.)]\s+/;
+const PROG_FECHA = /\b(era|semana|cuatrimestre|semestre|trimestre|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b|\b\d{1,2}\s*(al|a|-)\s*\d{1,2}\b/i;
+// Un tema numerado ("1. Generalidades de Microbiología. Definición, historia…"): el título es el tema y el resto, su detalle
+function temaNumerado(t){
+  const s = t.replace(PROG_NUM, '').trim(), m = s.match(/^(.{3,120}?)\.\s+(.+)$/) || s.match(/^(.{3,120}?):\s+(.+)$/);
+  if (!m) return { n: s.replace(/[.;:,\s]+$/, ''), d: '' };
+  const n = m[1].trim(), d = m[2].replace(/[.;,\s]+$/, '').trim();
+  return { n, d: norm(d) === norm(n) ? '' : d };
+}
+/* ---------- ordenar un programa desordenado (sin IA) ----------
+   Junta los renglones cortados, reconoce los títulos de unidad (Unidad 1, Bolilla 2, Semana 25-05…),
+   saca encabezados, pies de página y notas, y arma un tema por cada punto numerado (con su detalle). */
 function ordenarPrograma(txt){
-  let lineas = String(txt || '').replace(/\r/g, '').split('\n').map(s => s.replace(/\s+/g, ' ').trim())
+  const lineas = String(txt || '').replace(/\r/g, '').split('\n').map(s => s.replace(/\s+/g, ' ').trim())
     .filter(s => s && !/^\d{1,3}$/.test(s) && !/^p[aá]g(ina)?\.?\s*\d+(\s*(de|\/)\s*\d+)?$/i.test(s));
   const esCab = l => PROG_CAB.test(l) || (l.length < 80 && /:$/.test(l));
   const mayus = l => l.length < 70 && /[A-ZÁÉÍÓÚÑ]{3}/.test(l) && l === l.toUpperCase() && l.split(' ').length >= 2;
@@ -905,34 +972,39 @@ function ordenarPrograma(txt){
   const parrafos = [];
   lineas.forEach(l => {
     const prev = parrafos[parrafos.length - 1];
-    const sigue = prev && !cab(l) && !PROG_VIÑETA.test(l) && !/[.;:!?]$/.test(prev.t) && (/^[a-záéíóúñü(]/.test(l) || /[,y]$/.test(prev.t) || / (de|del|la|las|el|los|y|e|o|u|para|por|con|sin|en|a|al|su|sus)$/i.test(prev.t));
+    const sigue = prev && !cab(l) && !PROG_VIÑETA.test(l) && !/[.:!?]$/.test(prev.t) && (/^[a-záéíóúñü(]/.test(l) || /[,;y]$/.test(prev.t) || / (de|del|la|las|el|los|y|e|o|u|para|por|con|sin|en|a|al|su|sus)$/i.test(prev.t));
     if (sigue) prev.t += ' ' + l; else parrafos.push({ t: l, cab: cab(l) });
   });
-  // 2. unidades y temas
-  const out = [], frases = s => s.replace(/([.;])\s+(?=[A-ZÁÉÍÓÚÑ¿(0-9])/g, '$1\n').replace(/\s[•▪·►]\s/g, '\n').split('\n').map(x => x.replace(/^[-–•*·▪►✓]+\s*/, '').replace(/^\d+(\.\d+)*[.)]\s+/, '').replace(/^[a-z]\)\s+/, '').replace(/[.;:,\s]+$/, '').trim()).filter(x => x.length > 1);
+  // notas y aclaraciones al pie no son temas
+  for (let i = parrafos.length - 1; i >= 0; i--) if (/^(nota|aclaraci[oó]n|observaci[oó]n)(es)?\s*:/i.test(parrafos[i].t)) parrafos.splice(i, 1);
   // lo que viene antes del primer título (nombre de la materia, cátedra, año) se descarta si es corto
   const primera = parrafos.findIndex(p => p.cab);
-  if (primera > 0 && primera <= 4 && parrafos.slice(0, primera).every(p => p.t.length < 100)) parrafos.splice(0, primera);
-  let sinNombre = null;
+  if (primera > 0 && primera <= 6 && parrafos.slice(0, primera).every(p => p.t.length < 220 && !PROG_NUM.test(p.t))) parrafos.splice(0, primera);
+  // 2. unidades y temas
+  const limpio = x => x.replace(/^[-–•*▪►✓]+\s*/, '').replace(/^\d+(\.\d+)*[.)]\s+/, '').replace(/^[a-z]\)\s+/, '').replace(/[.;:,\s]+$/, '').trim();
+  const frases = s => s.replace(/([.])\s+(?=[A-ZÁÉÍÓÚÑ¿(])/g, '$1\n').replace(/\s[•▪►]\s/g, '\n').split('\n').map(limpio).filter(x => x.length > 1).map(n => ({ n, d: '' }));
+  const out = []; let ultima = null, sinNombre = null;
   parrafos.forEach(p => {
     if (p.cab){
-      const sinEtiq = p.t.replace(PROG_ETIQ, '').replace(/:$/, '').trim(), fs = frases(sinEtiq || p.t);
-      const u = { nombre: fs.shift() || p.t.replace(/:$/, ''), temas: fs }; out.push(u);
+      const sinEtiq = p.t.replace(PROG_ETIQ, '').replace(/^[·|:\-–\s]+/, '').replace(/:$/, '').trim(), fs = frases(sinEtiq || p.t);
+      const u = { nombre: (fs.shift() || { n: p.t.replace(/:$/, '') }).n, temas: fs }; out.push(u); ultima = u;
       // "UNIDAD 1" solo en un renglón y el título en el siguiente
       sinNombre = !sinEtiq && PROG_ETIQ.test(p.t) ? u : null;
-    } else if (sinNombre && p.t.length < 100){
-      const fs = frases(p.t); sinNombre.nombre = fs.shift() || sinNombre.nombre; sinNombre.temas.push(...fs); sinNombre = null;
-    } else {
-      sinNombre = null;
-      if (!out.length) out.push({ nombre: 'Unidad 1', temas: [] });
-      out[out.length - 1].temas.push(...frases(p.t));
+      return;
     }
+    if (sinNombre && p.t.length < 100 && !PROG_NUM.test(p.t)){ const fs = frases(p.t); sinNombre.nombre = (fs.shift() || {}).n || sinNombre.nombre; sinNombre.temas.push(...fs); sinNombre = null; return; }
+    sinNombre = null;
+    // "1.ª ERA · 11 al 16 de mayo" debajo del título: es la fecha de la unidad, no un tema
+    if (ultima && !ultima.temas.length && p.t.length < 80 && !PROG_NUM.test(p.t) && PROG_FECHA.test(p.t)){ ultima.nombre += ` (${p.t.replace(/[.\s]+$/, '')})`; return; }
+    if (!out.length){ ultima = { nombre: 'Unidad 1', temas: [] }; out.push(ultima); }
+    if (PROG_NUM.test(p.t)) ultima.temas.push(temaNumerado(p.t));
+    else ultima.temas.push(...frases(p.t));
   });
   return out.filter(u => u.temas.length || !/^(unidad|u\.)\s*\d*$/i.test(u.nombre.trim()));
 }
-const programaTexto = us => us.map((u, i) => `Unidad ${i + 1}: ${u.nombre}\n${u.temas.map(t => '- ' + (t.nombre || t)).join('\n')}`).join('\n\n');
-// Texto de las unidades que ya están cargadas, tal cual, para volver a ordenarlo
-const programaCrudo = us => us.map((u, i) => [PROG_CAB.test(u.nombre) && u.nombre.replace(PROG_ETIQ, '').trim() ? u.nombre : `Unidad ${i + 1}: ${u.nombre}`, ...u.temas.map(t => t.nombre)].join('\n')).join('\n');
+const programaTexto = us => us.map((u, i) => `Unidad ${i + 1}: ${u.nombre}\n${u.temas.map(t => `- ${t.n || t.nombre || t}${t.d || t.det ? ' — ' + (t.d || t.det) : ''}`).join('\n')}`).join('\n\n');
+// Texto de las unidades que ya están cargadas, para volver a ordenarlo (los temas con detalle van numerados para no mezclarlos)
+const programaCrudo = us => us.map((u, i) => [PROG_CAB.test(u.nombre) && u.nombre.replace(PROG_ETIQ, '').trim() ? u.nombre : `Unidad ${i + 1}: ${u.nombre}`, ...u.temas.map((t, j) => t.det ? `${j + 1}. ${t.nombre}. ${t.det}` : t.nombre)].join('\n')).join('\n');
 let UNDO = null;
 // Al reordenar se conserva lo tildado: un tema nuevo queda tildado si casi todo su texto venía de temas tildados
 function marcasTildadas(us){
@@ -950,29 +1022,36 @@ function ordenarExistente(mId){
   const viejos = antes.flatMap(u => u.temas), tildado = marcasTildadas(antes);
   UNDO = { m: mId, us: JSON.parse(JSON.stringify(antes)) };
   S.unidades[mId] = nuevo.map((u, i) => { const vieja = antes[i] && norm(antes[i].nombre) === norm(u.nombre) ? antes[i] : antes.find(a => norm(a.nombre) === norm(u.nombre));
-    return { id: vieja ? vieja.id : uid(), nombre: u.nombre, temas: u.temas.map(n => { const igual = viejos.find(t => norm(t.nombre) === norm(n));
-      return { id: igual ? igual.id : uid(), nombre: n, ok: igual ? !!igual.ok : tildado(n) }; }) }; });
+    return { id: vieja ? vieja.id : uid(), nombre: u.nombre, temas: u.temas.map(({ n, d }) => { const igual = viejos.find(t => norm(t.nombre) === norm(n));
+      const t = { id: igual ? igual.id : uid(), nombre: n, ok: igual ? !!igual.ok : tildado(n) }; if (d) t.det = d; return t; }) }; });
   save(); return S.unidades[mId].length;
+}
+// Encabezados y pies que se repiten en cada página ("Microbiología · 2026 — Página 1") no son parte del programa
+function sinRepetidos(paginas){
+  if (paginas.length < 2) return paginas.flat();
+  const clave = l => norm(l).replace(/\d+/g, '#'), veces = new Map();
+  paginas.forEach(ls => new Set(ls.map(clave)).forEach(k => veces.set(k, (veces.get(k) || 0) + 1)));
+  return paginas.flatMap(ls => ls.filter(l => l.length > 90 || veces.get(clave(l)) < 2));
 }
 
 /* ---------- leer el programa desde un PDF o una foto ---------- */
 async function pdfLineas(file, aviso){
-  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, n = Math.min(doc.numPages, 40), out = [];
+  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, n = Math.min(doc.numPages, 40), paginas = [];
   for (let i = 1; i <= n; i++){
     aviso(`Leyendo la página ${i} de ${n}…`);
-    const c = await (await doc.getPage(i)).getTextContent(); let linea = '', y0 = null;
+    const c = await (await doc.getPage(i)).getTextContent(), out = []; paginas.push(out); let linea = '', y0 = null;
     c.items.forEach(it => { const y = it.transform ? it.transform[5] : y0;
       if (y0 !== null && Math.abs(y - y0) > 3 && linea.trim()){ out.push(linea); linea = ''; }
       linea += (linea && !/\s$/.test(linea) && !/^\s/.test(it.str) ? ' ' : '') + it.str; y0 = y;
       if (it.hasEOL){ out.push(linea); linea = ''; y0 = null; } });
     if (linea.trim()) out.push(linea);
   }
-  const texto = out.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+  const texto = sinRepetidos(paginas.map(ls => ls.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean))).join('\n');
   if (texto.replace(/\s/g, '').length > 40) return texto;
   // PDF escaneado (son fotos): se dibuja cada página y se lee como imagen
-  const paginas = [];
-  for (let i = 1; i <= Math.min(doc.numPages, 12); i++){ const p = await doc.getPage(i), v = p.getViewport({ scale: 2 }), cv = document.createElement('canvas'); cv.width = v.width; cv.height = v.height; await p.render({ canvasContext: cv.getContext('2d'), viewport: v }).promise; paginas.push(cv); }
-  return ocr(paginas, aviso);
+  const hojas = [];
+  for (let i = 1; i <= Math.min(doc.numPages, 12); i++){ const p = await doc.getPage(i), v = p.getViewport({ scale: 2 }), cv = document.createElement('canvas'); cv.width = v.width; cv.height = v.height; await p.render({ canvasContext: cv.getContext('2d'), viewport: v }).promise; hojas.push(cv); }
+  return ocr(hojas, aviso);
 }
 let ocrReady = null;
 function loadOcr(){
@@ -989,9 +1068,9 @@ async function ocr(imagenes, aviso){
   aviso('Preparando el lector de imágenes (la primera vez tarda un poco más)…');
   const T = await loadOcr(); let i = 0;
   const w = await T.createWorker('spa', 1, { logger: x => { if (x.status === 'recognizing text') aviso(`Leyendo ${imagenes.length > 1 ? `la imagen ${i + 1} de ${imagenes.length}` : 'la imagen'}… ${Math.round((x.progress || 0) * 100)} %`); } });
-  let out = '';
-  try { for (; i < imagenes.length; i++){ const { data } = await w.recognize(imagenes[i]); out += data.text + '\n'; } } finally { await w.terminate(); }
-  return out;
+  const paginas = [];
+  try { for (; i < imagenes.length; i++){ const { data } = await w.recognize(imagenes[i]); paginas.push(data.text.split('\n').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean)); } } finally { await w.terminate(); }
+  return sinRepetidos(paginas).join('\n');
 }
 let IP = { crudo:'' };
 async function ipArchivos(input){
@@ -1019,9 +1098,9 @@ function parseProgram(txt){
       const name = l.replace(/^(unidad|m[oó]dulo|bloque|eje|cap[ií]tulo)\s*[\dIVXLC]*\s*[:.\-–]?\s*/i, '').replace(/:$/, '').trim();
       out.push({ id: uid(), nombre: name || l.replace(/:$/, ''), temas: [] });
     } else {
-      const clean = l.replace(/^[-–•*·▪]+\s*/, '').replace(/^\d+(\.\d+)*[.)]?\s+/, '').trim();
+      const clean = l.replace(/^[-–•*·▪]+\s*/, '').replace(/^\d+(\.\d+)*[.)]?\s+/, '').trim(), m = clean.match(/^(.{3,120}?)\s+—\s+(.+)$/) || clean.match(/^([^:;]{3,90}):\s+(.+)$/);
       if (!out.length) out.push({ id: uid(), nombre: 'Unidad 1', temas: [] });
-      if (clean) out[out.length - 1].temas.push({ id: uid(), nombre: clean, ok: false });
+      if (clean) out[out.length - 1].temas.push(m ? { id: uid(), nombre: m[1].trim(), det: m[2].trim(), ok: false } : { id: uid(), nombre: clean, ok: false });
     }
   });
   return out;
@@ -2285,6 +2364,7 @@ document.addEventListener('change', e => {
   if (k === 'ed-topic-act' && t.value) edTopicAct(t.dataset.m, t.dataset.u, t.dataset.t, t.value);
   if (k === 'ed-unit-act' && t.value) edUnitAct(t.dataset.m, t.dataset.u, t.value);
   if (k === 'ed-unit'){ const u = units(t.dataset.m).find(x => x.id === t.dataset.u); if (u && t.value.trim()) u.nombre = t.value.trim(); save(); }
+  if (k === 'ed-topic-det'){ const u = units(t.dataset.m).find(x => x.id === t.dataset.u), tp = u && u.temas.find(x => x.id === t.dataset.t); if (tp){ tp.det = t.value.trim(); save(); } }
   if (k === 'ed-topic'){ const u = units(t.dataset.m).find(x => x.id === t.dataset.u), tp = u && u.temas.find(x => x.id === t.dataset.t); if (tp && t.value.trim()) tp.nombre = t.value.trim(); save(); }
   if (k === 'notif-dias'){ S.notif.dias = +t.value; save(); renderBell(); renderNotif(); }
   if (k === 'nc-img'){ const f = t.files[0]; if (!f) return; compressImg(f).then(u => { NC = { img:u, boxes:[] }; occEditor(); }).catch(() => { $('#nc-occ').textContent = 'No se pudo abrir la imagen.'; }); }
@@ -2305,7 +2385,7 @@ document.addEventListener('submit', e => {
     units(f.dataset.m).find(x => x.id === f.dataset.u).temas.push({ id: uid(), nombre: v, ok:false }); save(); render();
     const n = document.getElementById('en-' + f.dataset.u); n && n.focus(); }
   if (k === 'import-prog'){ const txt = $('#ip-t').value, m = f.dataset.m;
-    const us = /^\s*-\s/m.test(txt) ? parseProgram(txt) : ordenarPrograma(txt).map(u => ({ id: uid(), nombre: u.nombre, temas: u.temas.map(t => ({ id: uid(), nombre: t, ok: false })) }));
+    const us = /^\s*-\s/m.test(txt) ? parseProgram(txt) : ordenarPrograma(txt).map(u => ({ id: uid(), nombre: u.nombre, temas: u.temas.map(t => ({ id: uid(), nombre: t.n, ...(t.d ? { det: t.d } : {}), ok: false })) }));
     if (!us.length){ $('#ip-msg').textContent = 'No encontré unidades ni temas en el texto.'; return; }
     if ($('#ip-r').checked){ S.unidades[m] = us; S.eventos.forEach(e => { if (e.materiaId === m) e.unidades = []; }); } else S.unidades[m] = [...units(m), ...us];
     save(); closeModal(); R.tab = 'unidades'; R.edit = true; render(); }

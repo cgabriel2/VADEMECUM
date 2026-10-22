@@ -420,3 +420,18 @@ div.f{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.88re
 /* El menú es solo un ícono de flechas: así el nombre del tema se lee entero en el celular */
 .ed-row .ed-act{width:38px;height:38px;flex:none;padding:0;color:transparent;cursor:pointer;-webkit-appearance:none;appearance:none;background:var(--surface) url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2218%22%20height%3D%2218%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2316587B%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M7%204v16M3%208l4-4%204%204M17%2020V4M13%2016l4%204%204-4%22%2F%3E%3C%2Fsvg%3E") center/18px no-repeat}
 .ed-row .ed-act option,.ed-row .ed-act optgroup{color:#1d2a33}
+/* Detalle de cada tema (lo que trae el programa debajo del título) */
+.topic-det{display:block;color:var(--muted);font-size:.82rem;font-weight:400;margin-top:2px}
+.topic.done .topic-det{text-decoration:none}
+.ed-tema{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.ed-tema .ed-det{font-size:.82rem;min-height:0;padding:6px 10px;color:var(--muted)}
+/* Arrastrar y soltar temas y unidades */
+.grip{flex:none;display:grid;place-items:center;width:26px;height:38px;margin-left:-4px;color:var(--muted);cursor:grab;touch-action:none;border-radius:8px;-webkit-user-select:none;user-select:none}
+.grip:hover{background:var(--surface-2);color:var(--accent)}
+.drag-fantasma{position:fixed;z-index:80;pointer-events:none;opacity:.92;box-shadow:0 10px 30px rgba(22,88,123,.25);background:var(--surface);border-radius:12px;cursor:grabbing}
+.drag-oculto{display:none!important}
+.drag-lugar{border:2px dashed var(--accent);border-radius:10px;background:var(--accent-soft);margin-left:22px}
+.drag-lugar.u{margin-left:0}
+/* mientras se arrastra una unidad, las unidades se ven cerradas para que sea fácil acomodarlas */
+#ed-units.compacto .ed-t, #ed-units.compacto form.ed-row, #ed-units.compacto .ed-unit .ed-act, #ed-units.compacto .ed-unit .icon-btn{display:none}
+#ed-units.compacto .ed-unit{padding:8px 12px}
