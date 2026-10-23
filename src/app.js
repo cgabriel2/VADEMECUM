@@ -761,7 +761,7 @@ function vCarrera(){
 
 /* ---------- modales ---------- */
 function modal(html){ const w = $('#modal'); w.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; w.hidden = false; const f = w.querySelector('input,select,textarea'); f && f.focus(); }
-function closeModal(){ $('#modal').hidden = true; $('#modal').innerHTML = ''; }
+function closeModal(){ if (typeof imgsCancelar === 'function') imgsCancelar(); $('#modal').hidden = true; $('#modal').innerHTML = ''; }
 const matOptions = sel => cursando().map(m => `<option value="${m.id}" ${sel===m.id?'selected':''}>${esc(m.nombre)}</option>`).join('');
 
 /* ---------- búsqueda ---------- */
@@ -1592,7 +1592,7 @@ function fichaList(){
   const chipsCp = x => (x.carpetas || []).map(carpeta).filter(Boolean).map(c => `<span class="pill" style="background:transparent;border:1px solid ${esc(c.color || 'var(--line)')}">${esc(c.nombre)}</span>`).join('');
   if (k === 'mne'){
     return list.length ? `<div class="grid g3">${list.map(x => { const cs = camposDe(x, 'mne').filter(c => c.v);
-      return `<div class="card stack${tinte(x, 'gap:8px')}"><div class="row between" style="flex-wrap:nowrap"><span class="pill p-warm">${esc(matName(x.materiaId))}</span><div class="row" style="gap:4px"><button class="icon-btn" data-act="mn-edit" data-id="${x.id}" aria-label="Editar mnemotecnia">${I('edit',15)}</button><button class="icon-btn danger" data-act="mn-del" data-id="${x.id}" aria-label="Eliminar mnemotecnia">${I('trash',15)}</button></div></div>
+      return `<div class="card stack${tinte(x, 'gap:8px')}">${imgMini(x, 'mne')}<div class="row between" style="flex-wrap:nowrap"><span class="pill p-warm">${esc(matName(x.materiaId))}</span><div class="row" style="gap:4px"><button class="icon-btn" data-act="mn-edit" data-id="${x.id}" aria-label="Editar mnemotecnia">${I('edit',15)}</button><button class="icon-btn danger" data-act="mn-del" data-id="${x.id}" aria-label="Eliminar mnemotecnia">${I('trash',15)}</button></div></div>
       <h3>${esc(x.titulo)}</h3><p style="font-family:var(--f-display);font-size:1.08rem;font-weight:600">${esc(x.texto)}</p>
       ${cs.length === 1 && cs[0].l === MN_CAMPOS[0][1] ? `<p class="small muted">${esc(cs[0].v)}</p>` : cs.map(c => `<p class="small"><b>${esc(c.l)}:</b> <span class="muted">${esc(c.v)}</span></p>`).join('')}
       ${chipsCp(x) ? `<div class="chips">${chipsCp(x)}</div>` : ''}</div>`; }).join('')}</div>`
@@ -1600,7 +1600,7 @@ function fichaList(){
   }
   const T = FI_TIPOS[k];
   return list.length ? `<div class="grid g3">${list.map(x => { const c0 = camposDe(x, k).find(c => c.v);
-    return `<div class="card mat${tinte(x)}" data-act="fi-open" data-id="${x.id}" role="button" tabindex="0"><div class="row between" style="flex-wrap:nowrap"><span class="doc-ico">${I(T.ico,18)}</span>${mat(x.materiaId) ? `<span class="small muted">${esc(matName(x.materiaId))}</span>` : ''}</div>
+    return `<div class="card mat${tinte(x)}" data-act="fi-open" data-id="${x.id}" role="button" tabindex="0">${imgMini(x, k)}<div class="row between" style="flex-wrap:nowrap"><span class="doc-ico">${I(T.ico,18)}</span>${mat(x.materiaId) ? `<span class="small muted">${esc(matName(x.materiaId))}</span>` : ''}</div>
       <div><h2>${esc(x.nombre)}</h2><p class="small muted">${esc(x[T.sub] || '')}</p></div><p class="small clamp">${c0 ? `<b>${esc(c0.l)}:</b> ${esc(c0.v)}` : ''}</p>${chipsCp(x) ? `<div class="chips">${chipsCp(x)}</div>` : ''}</div>`; }).join('')}</div>`
     : `<div class="empty">${filtrando ? 'No hay fichas con ese filtro.' : `Todavía no hay fichas${k === 'gen' ? ' generales. Sirven para anatomía, microbiología o cualquier tema: elegí los campos que quieras' : ''}. Creá la primera con “Nueva ficha”.`}</div>`;
 }
@@ -1630,6 +1630,7 @@ function fichaForm(k, x){
       <label class="f">Materia<select id="ff-m"><option value="">General</option>${S.materias.map(m => `<option value="${m.id}" ${mSel === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label></div>
       <div class="f">Carpetas${carpetaChips(fiCarpetasIni(x))}</div>
       ${colorPicker(x && x.color)}
+      ${imgsEditor(x)}
       ${camposEditor(x ? camposDe(x, k) : camposBase(k).map(([, l]) => ({ l, v: '' })))}
       <button class="btn" type="button" style="align-self:flex-start" data-act="fi-ai" data-k="${k}">${I('spark',16)}Completar los campos con IA</button>
       <p class="small muted" id="ff-msg"></p>
@@ -1644,6 +1645,7 @@ function mnemoForm(x){
       <label class="f">Mnemotecnia<textarea id="mf-x" required style="min-height:70px" placeholder="La frase o regla para acordarte">${esc(x ? x.texto : '')}</textarea></label>
       <div class="f">Carpetas${carpetaChips(fiCarpetasIni(x))}</div>
       ${colorPicker(x && x.color)}
+      ${imgsEditor(x)}
       ${camposEditor(x ? camposDe(x, 'mne') : MN_CAMPOS.map(([, l]) => ({ l, v: '' })))}
       <p class="small muted" id="mf-msg"></p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></form>`);
@@ -1655,6 +1657,83 @@ function carpetasModal(){
     <form class="row" style="gap:6px;flex-wrap:nowrap" data-form="carpeta"><input id="cpm-n" type="text" placeholder="Nombre de la carpeta nueva" maxlength="40" required><button class="btn pri" type="submit">${I('plus',16)}Crear</button></form>
     <p class="small muted">Si eliminás una carpeta, las fichas no se borran: solo salen de esa carpeta.</p>`);
 }
+
+/* ---------- imágenes en fichas y mnemotecnias ----------
+   Las imágenes se guardan aparte (en la nube, en una carpeta privada de cada cuenta) y la ficha solo
+   guarda dónde está cada una, así los datos de la app siguen siendo livianos. */
+const IMG_API = HOST.imagenes || null, IMG_MAX = 8;
+let FIMG = null; // mientras el formulario está abierto: { lista:[{p,c}], nuevas:[], quitadas:[] }
+const imgsDe = x => Array.isArray(x && x.imgs) ? x.imgs : [];
+function comprimirFoto(file, max = 1600, q = 0.82){
+  return new Promise((res, rej) => { const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      c.toBlob(b => b ? res(b) : rej(new Error('imagen')), 'image/jpeg', q); };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen')); }; im.src = url; });
+}
+const imgsFilas = () => FIMG.lista.map((im, i) => `<div class="fi-img-ed"><img data-img="${esc(im.p)}" alt="Imagen ${i + 1}"><input type="text" value="${esc(im.c || '')}" placeholder="Qué muestra (opcional)" data-img-c="${i}" maxlength="200" aria-label="Descripción de la imagen ${i + 1}"><button type="button" class="icon-btn danger" data-act="fi-img-del" data-i="${i}" aria-label="Quitar la imagen ${i + 1}">${I('x',14)}</button></div>`).join('');
+function imgsEditor(x){
+  FIMG = { lista: imgsDe(x).map(i => ({ ...i })), nuevas: [], quitadas: [] };
+  if (!IMG_API) return '';
+  return `<div class="f">Imágenes<span class="small muted" style="font-weight:500">Esquemas, cortes, preparados o fotos del apunte. Hasta ${IMG_MAX} por ficha.</span>
+    <div class="stack" id="fi-imgs" style="gap:8px">${imgsFilas()}</div>
+    <label class="btn sm" for="fi-img-in" style="align-self:flex-start;cursor:pointer">${I('image',15)}Agregar imagen</label><input type="file" id="fi-img-in" data-change="fi-img" accept="image/*" multiple hidden>
+    <p class="small muted" id="fi-img-msg"></p></div>`;
+}
+const imgsLeerEpigrafes = () => document.querySelectorAll('[data-img-c]').forEach(inp => { const im = FIMG && FIMG.lista[+inp.dataset.imgC]; if (im) im.c = inp.value.trim(); });
+async function imgsAgregar(input){
+  const files = [...input.files].filter(f => f.type.startsWith('image/')), msg = $('#fi-img-msg'); input.value = '';
+  if (!FIMG || !files.length) return;
+  imgsLeerEpigrafes();
+  const lugar = IMG_MAX - FIMG.lista.length; if (lugar <= 0){ msg.textContent = `Ya hay ${IMG_MAX} imágenes: quitá alguna para sumar otra.`; return; }
+  const btns = document.querySelectorAll('#modal button[type=submit]'); btns.forEach(b => { b.disabled = true; });
+  let ok = 0;
+  try {
+    for (const [i, f] of files.slice(0, lugar).entries()){
+      msg.style.color = 'var(--muted)'; msg.textContent = `Subiendo ${files.length > 1 ? `${i + 1} de ${Math.min(files.length, lugar)}` : 'la imagen'}…`;
+      const p = await IMG_API.subir(await comprimirFoto(f)); if (!FIMG) return;
+      FIMG.lista.push({ p, c: '' }); FIMG.nuevas.push(p); ok++;
+    }
+    msg.textContent = files.length > lugar ? `Se agregaron ${ok}. El máximo es ${IMG_MAX} por ficha.` : '';
+  } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = 'No se pudo subir la imagen. Revisá tu conexión e intentá de nuevo.'; }
+  finally { btns.forEach(b => { b.disabled = false; }); const box = $('#fi-imgs'); if (box && FIMG) box.innerHTML = imgsFilas(); }
+}
+// al guardar: lo quitado se borra de la nube; al cancelar: se borra lo que se había subido
+function imgsGuardar(){ if (!FIMG) return []; imgsLeerEpigrafes(); const lista = FIMG.lista; if (FIMG.quitadas.length && IMG_API) IMG_API.borrar(FIMG.quitadas).catch(() => {}); FIMG = null; return lista; }
+function imgsCancelar(){ if (FIMG && FIMG.nuevas.length && IMG_API) IMG_API.borrar(FIMG.nuevas).catch(() => {}); FIMG = null; }
+const imgsBorrarDe = x => { const ps = imgsDe(x).map(i => i.p); if (ps.length && IMG_API) IMG_API.borrar(ps).catch(() => {}); };
+// miniatura arriba de cada tarjeta
+const imgMini = (x, k) => { const im = imgsDe(x); if (!im.length) return '';
+  return `<button type="button" class="fi-thumb" data-act="img-ver" data-k="${k}" data-id="${x.id}" data-i="0" aria-label="Ver las imágenes de ${esc(fiNombre(x, k))}"><img data-img="${esc(im[0].p)}" alt="">${im.length > 1 ? `<span class="fi-thumb-n">${I('image',12)} ${im.length}</span>` : ''}</button>`; };
+const imgGaleria = (x, k) => { const im = imgsDe(x); if (!im.length) return '';
+  return `<div class="fi-galeria">${im.map((m, i) => `<figure><button type="button" data-act="img-ver" data-k="${k}" data-id="${x.id}" data-i="${i}" aria-label="Ampliar la imagen ${i + 1}"><img data-img="${esc(m.p)}" alt="${esc(m.c || fiNombre(x, k))}"></button>${m.c ? `<figcaption>${esc(m.c)}</figcaption>` : ''}</figure>`).join('')}</div>`; };
+// las direcciones de las imágenes se piden juntas cada vez que aparecen en pantalla
+async function hidratarImgs(){
+  if (!IMG_API) return;
+  const els = [...document.querySelectorAll('img[data-img]:not([src])')]; if (!els.length) return;
+  const paths = [...new Set(els.map(e => e.dataset.img))];
+  let urls = []; try { urls = await IMG_API.urls(paths); } catch (e) {}
+  els.forEach(e => { const u = urls[paths.indexOf(e.dataset.img)]; if (u) e.src = u; else e.classList.add('img-error'); });
+}
+new MutationObserver(() => { clearTimeout(hidratarImgs.t); hidratarImgs.t = setTimeout(hidratarImgs, 30); }).observe(document.body, { childList: true, subtree: true });
+// visor a pantalla completa para estudiar: flechas, deslizar con el dedo y tocar para ocultar el texto
+let VISOR = null;
+function visorAbrir(k, id, i){
+  const x = fiArr(k).find(y => y.id === id); if (!x || !imgsDe(x).length) return;
+  VISOR = { x, k, i: +i || 0, sinTexto: false }; visorPintar();
+}
+function visorPintar(){
+  let v = $('#visor'); if (!VISOR){ if (v) v.remove(); document.body.classList.remove('visor-abierto'); return; }
+  const im = imgsDe(VISOR.x), n = im.length, m = im[VISOR.i];
+  if (!v){ v = document.createElement('div'); v.id = 'visor'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-modal', 'true'); document.body.append(v); document.body.classList.add('visor-abierto'); }
+  v.innerHTML = `<div class="visor-top"><b>${esc(fiNombre(VISOR.x, VISOR.k))}</b><span class="small">${n > 1 ? `${VISOR.i + 1} de ${n}` : ''}</span><button class="visor-btn" data-act="visor-cerrar" aria-label="Cerrar">${I('x',20)}</button></div>
+    <div class="visor-img">${n > 1 ? `<button class="visor-btn visor-ant" data-act="visor-ir" data-d="-1" aria-label="Imagen anterior">${I('back',22)}</button>` : ''}<img data-img="${esc(m.p)}" alt="${esc(m.c || '')}">${n > 1 ? `<button class="visor-btn visor-sig" data-act="visor-ir" data-d="1" aria-label="Imagen siguiente">${I('next',22)}</button>` : ''}</div>
+    ${m.c ? `<button class="visor-texto ${VISOR.sinTexto ? 'oculto' : ''}" data-act="visor-texto">${VISOR.sinTexto ? 'Tocá para ver qué es' : esc(m.c)}</button>` : ''}`;
+}
+document.addEventListener('keydown', e => { if (!VISOR) return; if (e.key === 'Escape'){ VISOR = null; visorPintar(); e.stopImmediatePropagation(); } if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') A['visor-ir']({ d: e.key === 'ArrowRight' ? 1 : -1 }); }, true);
+let visorX = null;
+document.addEventListener('pointerdown', e => { if (VISOR && e.target.closest && e.target.closest('.visor-img')) visorX = e.clientX; });
+document.addEventListener('pointerup', e => { if (VISOR && visorX !== null){ const dx = e.clientX - visorX; visorX = null; if (Math.abs(dx) > 50) A['visor-ir']({ d: dx < 0 ? 1 : -1 }); } });
 
 /* ---------- compartir con un código (fichas y terminología) ----------
    El contenido viaja comprimido dentro del código: no pasa por la base de datos. */
@@ -1689,7 +1768,7 @@ function fiShareModal(){
   const grupos = FI_TABS.map(([k, l]) => ({ k, titulo: l, items: fiLista(k, false).map(x => ({ id: `${k}:${x.id}`, n: fiNombre(x, k), s: k === 'mne' ? '' : x[FI_TIPOS[k].sub] || '', on: !!FI.carpeta || k === FI.tab })) })).filter(g => g.items.length);
   const cp = carpeta(FI.carpeta);
   modal(`<div class="row between"><h2>Compartir fichas</h2>${closeX()}</div>
-    ${grupos.length ? `<p class="small muted">Elegí qué fichas pasar${cp ? ` de la carpeta <b>${esc(cp.nombre)}</b>` : ''}. Se arma un código: la otra persona lo pega en “Recibir” y le aparecen en su app, con sus campos y colores.${FI.carpeta || FI.m ? ' Se muestran las del filtro que tenés puesto.' : ''}</p>
+    ${grupos.length ? `<p class="small muted">Elegí qué fichas pasar${cp ? ` de la carpeta <b>${esc(cp.nombre)}</b>` : ''}. Se arma un código: la otra persona lo pega en “Recibir” y le aparecen en su app, con sus campos y colores. Las imágenes no viajan en el código.${FI.carpeta || FI.m ? ' Se muestran las del filtro que tenés puesto.' : ''}</p>
     ${selLista(grupos)}
     <button class="btn pri" data-act="fi-share-gen" style="align-self:flex-start">${I('share',16)}Generar código</button><div id="sh-out"></div>`
     : '<p class="muted">No hay fichas para compartir con este filtro.</p>'}`);
@@ -2251,10 +2330,18 @@ Texto del examen:
   'fi-open': d => { const r = fichaFind(d.id); if (!r) return; const T = FI_TIPOS[r.k], x = r.x, cs = camposDe(x, r.k).filter(c => c.v), cps = (x.carpetas || []).map(carpeta).filter(Boolean);
     modal(`<div class="row between"><p class="eyebrow">${T.lbl}${x[T.sub] ? ' · ' + esc(x[T.sub]) : ''}</p>${closeX()}</div><h2>${esc(x.nombre)}</h2>
       ${cps.length ? `<div class="chips">${cps.map(c => `<span class="pill" style="background:transparent;border:1px solid ${esc(c.color || 'var(--line)')}">${esc(c.nombre)}</span>`).join('')}</div>` : ''}
+      ${imgGaleria(x, r.k)}
       <dl class="dl">${cs.map(c => `<div><dt>${esc(c.l)}</dt><dd>${esc(c.v)}</dd></div>`).join('') || '<p class="small muted">Esta ficha todavía no tiene contenido.</p>'}</dl>
       <p class="small" id="fi-msg"></p>
       <div class="row"><button class="btn pri" data-act="fi-cards" data-id="${x.id}">${I('cards',16)}Crear flashcards</button><button class="btn" data-act="ai-ask" data-q="${esc(`Explicame ${x.nombre} de forma simple y tomame 3 preguntas tipo examen sobre ${{ farm:'este fármaco', enf:'esta enfermedad', gen:'este tema' }[r.k]}.`)}">${I('spark',16)}Preguntale a la IA</button><button class="btn" data-act="fi-edit" data-id="${x.id}">${I('edit',16)}Editar</button><button class="btn" style="color:var(--danger)" data-act="fi-del" data-id="${x.id}">${I('trash',16)}Eliminar</button></div>`); },
   'col-pick': (d, el) => { $('#col-v').value = d.c; $('#col-sw').querySelectorAll('.sw').forEach(b => b.setAttribute('aria-pressed', String(b === el))); },
+  'fi-img-del': d => { if (!FIMG) return; imgsLeerEpigrafes(); const [im] = FIMG.lista.splice(+d.i, 1); if (!im) return;
+    if (FIMG.nuevas.includes(im.p)){ FIMG.nuevas = FIMG.nuevas.filter(p => p !== im.p); IMG_API && IMG_API.borrar([im.p]).catch(() => {}); } else FIMG.quitadas.push(im.p);
+    $('#fi-imgs').innerHTML = imgsFilas(); },
+  'img-ver': d => visorAbrir(d.k, d.id, d.i),
+  'visor-cerrar': () => { VISOR = null; visorPintar(); },
+  'visor-ir': d => { if (!VISOR) return; const n = imgsDe(VISOR.x).length; VISOR.i = (VISOR.i + Number(d.d) + n) % n; visorPintar(); },
+  'visor-texto': () => { if (!VISOR) return; VISOR.sinTexto = !VISOR.sinTexto; visorPintar(); },
   'fi-carpeta': d => { FI.carpeta = d.id; render(); },
   'fi-carpetas': () => carpetasModal(),
   'cp-del': (d, el) => { if (!armed(el)) return; S.carpetas = S.carpetas.filter(c => c.id !== d.id); fiTodas().forEach(x => { if (x.carpetas) x.carpetas = x.carpetas.filter(i => i !== d.id); }); if (FI.carpeta === d.id) FI.carpeta = ''; save(); render(); carpetasModal(); },
@@ -2281,7 +2368,7 @@ Texto del examen:
     try { navigator.clipboard.writeText(SH.msg).then(() => { el.innerHTML = I('check',14) + 'Copiado'; }, selectIt); } catch (e) { selectIt(); } },
   'sh-send': () => { try { navigator.share({ title: 'MedNoe', text: SH.msg }).catch(() => {}); } catch (e) {} },
   'fi-edit': d => { const r = fichaFind(d.id); if (r) fichaForm(r.k, r.x); },
-  'fi-del': (d, el) => { if (!armed(el)) return; ['farmacos', 'enfermedades', 'generales'].forEach(k => { S.fichas[k] = S.fichas[k].filter(x => x.id !== d.id); }); save(); closeModal(); render(); },
+  'fi-del': (d, el) => { if (!armed(el)) return; const fx = fichaFind(d.id); if (fx) imgsBorrarDe(fx.x); ['farmacos', 'enfermedades', 'generales'].forEach(k => { S.fichas[k] = S.fichas[k].filter(x => x.id !== d.id); }); save(); closeModal(); render(); },
   'fi-cards': d => { const r = fichaFind(d.id); if (!r) return; const T = FI_TIPOS[r.k], x = r.x, msg = $('#fi-msg');
     const mId = mat(x.materiaId) ? x.materiaId : (cursando()[0] || {}).id;
     if (!mId){ msg.textContent = 'Primero agregá una materia.'; return; }
@@ -2306,7 +2393,7 @@ Texto del examen:
     el.disabled = false;
   },
   'mn-edit': d => { const x = S.mnemos.find(m => m.id === d.id); if (x) mnemoForm(x); },
-  'mn-del': (d, el) => { if (!armed(el)) return; S.mnemos = S.mnemos.filter(x => x.id !== d.id); save(); render(); },
+  'mn-del': (d, el) => { if (!armed(el)) return; imgsBorrarDe(S.mnemos.find(x => x.id === d.id)); S.mnemos = S.mnemos.filter(x => x.id !== d.id); save(); render(); },
   'mn-ai': async (d, el) => {
     const titulo = $('#mf-t').value.trim(), msg = $('#mf-msg');
     if (!titulo){ msg.textContent = 'Escribí primero qué querés recordar.'; return; }
@@ -2406,6 +2493,7 @@ document.addEventListener('change', e => {
   if (k === 'fe-tema'){ P.fe.tema = t.value; render(); if (t.value === '__otro'){ const l = $('#fe-libre'); l && l.focus(); } }
   if (k === 'pm-m'){ S.pomo.materiaId = t.value; save(); }
   if (k === 'fi-m'){ FI.m = t.value; render(); }
+  if (k === 'fi-img') imgsAgregar(t);
   if (k === 'cp-nombre'){ const c = carpeta(t.dataset.id); if (c && t.value.trim()){ c.nombre = t.value.trim().slice(0, 40); save(); render(); } }
   if (k === 'cp-color'){ const c = carpeta(t.dataset.id); if (c){ c.color = t.value; save(); render(); } }
   if (k === 'sel-all'){ document.querySelectorAll(`#sel-box .sel[data-g="${t.dataset.g}"]`).forEach(x => { x.checked = t.checked; }); selContar(); }
@@ -2428,13 +2516,13 @@ document.addEventListener('input', e => {
 document.addEventListener('submit', e => {
   const f = e.target, k = f.dataset.form; if (!k) return;
   if (k === 'ficha'){ const T = FI_TIPOS[f.dataset.k], nombre = $('#ff-nombre').value.trim(); if (!nombre) return;
-    const data = { nombre, [T.sub]: $('#ff-sub').value.trim(), materiaId: $('#ff-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos() };
+    const data = { nombre, [T.sub]: $('#ff-sub').value.trim(), materiaId: $('#ff-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos(), imgs: imgsGuardar() };
     const ex = f.dataset.id && fichaFind(f.dataset.id);
     if (ex){ T.campos.forEach(([c]) => { delete ex.x[c]; }); Object.assign(ex.x, data); } else S.fichas[T.key].push({ id: uid(), ...data });
     save(); closeModal(); FI.tab = f.dataset.k; render(); if (ex) A['fi-open']({ id: ex.x.id }); }
   if (k === 'carpeta'){ if (nuevaCarpeta($('#cpm-n').value)){ save(); render(); carpetasModal(); } return; }
   if (k === 'mnemo'){ const titulo = $('#mf-t').value.trim(), texto = $('#mf-x').value.trim(); if (!titulo || !texto) return;
-    const data = { titulo, texto, materiaId: $('#mf-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos() }, ex = f.dataset.id && S.mnemos.find(x => x.id === f.dataset.id);
+    const data = { titulo, texto, materiaId: $('#mf-m').value, color: $('#col-v').value, carpetas: leerCarpetas(), campos: leerCampos(), imgs: imgsGuardar() }, ex = f.dataset.id && S.mnemos.find(x => x.id === f.dataset.id);
     if (ex){ delete ex.detalle; Object.assign(ex, data); } else S.mnemos.push({ id: uid(), ...data }); save(); closeModal(); render(); }
   if (k === 'clase'){ const desde = $('#cl-desde').value, hasta = $('#cl-hasta').value;
     if (!desde || !hasta || hasta <= desde){ $('#cl-err').textContent = 'La hora de fin tiene que ser posterior a la de inicio.'; return; }

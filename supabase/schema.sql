@@ -168,3 +168,17 @@ drop policy if exists "terminos: editar admin" on public.glossary_terms;
 create policy "terminos: editar admin" on public.glossary_terms for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
 drop policy if exists "terminos: borrar admin" on public.glossary_terms;
 create policy "terminos: borrar admin" on public.glossary_terms for delete to authenticated using ((select private.is_admin()));
+
+-- Imágenes de las fichas: espacio privado; cada cuenta solo ve, sube y borra lo de su propia carpeta (<user_id>/archivo.jpg)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('fichas', 'fichas', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+drop policy if exists "imagenes fichas: ver propias" on storage.objects;
+create policy "imagenes fichas: ver propias" on storage.objects for select to authenticated
+  using (bucket_id = 'fichas' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "imagenes fichas: subir propias" on storage.objects;
+create policy "imagenes fichas: subir propias" on storage.objects for insert to authenticated
+  with check (bucket_id = 'fichas' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "imagenes fichas: borrar propias" on storage.objects;
+create policy "imagenes fichas: borrar propias" on storage.objects for delete to authenticated
+  using (bucket_id = 'fichas' and (storage.foldername(name))[1] = (select auth.uid())::text);

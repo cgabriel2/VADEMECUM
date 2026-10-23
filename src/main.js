@@ -227,10 +227,27 @@ async function salir(){
   try { localStorage.removeItem(cacheKey()); } catch (e) {}
   await supabase.auth.signOut(); location.reload();
 }
+/* ---------- imágenes de las fichas: carpeta privada de cada cuenta en Supabase Storage ---------- */
+const BUCKET_IMG = 'fichas', urlsImg = new Map();
+const imagenes = {
+  async subir(blob){
+    const path = `${uid}/${crypto.randomUUID()}.jpg`;
+    const { error } = await supabase.storage.from(BUCKET_IMG).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false });
+    if (error) throw new Error(errorTexto(error)); return path;
+  },
+  // direcciones firmadas que duran una hora; se reutilizan mientras sirven
+  async urls(paths){
+    const ahora = Date.now(), faltan = paths.filter(p => !(urlsImg.get(p) && urlsImg.get(p).hasta > ahora));
+    if (faltan.length){ const { data, error } = await supabase.storage.from(BUCKET_IMG).createSignedUrls(faltan, 3600); if (error) throw error;
+      (data || []).forEach(d => { if (d.signedUrl) urlsImg.set(d.path, { url: d.signedUrl, hasta: ahora + 50 * 60 * 1000 }); }); }
+    return paths.map(p => (urlsImg.get(p) || {}).url || '');
+  },
+  async borrar(paths){ if (paths.length) await supabase.storage.from(BUCKET_IMG).remove(paths); }
+};
 async function estadisticas(){ const { data, error } = await supabase.rpc('admin_stats'); if (error) throw new Error(errorTexto(error)); return data; }
 
 function arrancar(user, data, inicio, glos){
-  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario };
+  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario, imagenes };
   import('./app.js').then(() => { authBox.hidden = true; authBox.innerHTML = ''; });
 }
 
@@ -258,7 +275,16 @@ if (LOCAL){
     async borrar(id){ glos = glos.filter(x => x.id !== id); guardarGlos(); },
     async importar(lista){ const out = []; for (const t of lista){ const x = limpiarTermino(t); if (!glos.some(g => g.term.toLowerCase() === x.term.toLowerCase())){ const row = { id: sig++, ...x }; glos.push(row); out.push(row); } } guardarGlos(); return out; }
   };
-  window.__VDM__ = { user: null, local: true, data: datos, inicio: new URLSearchParams(location.search).get('local') === 'vacio' ? 'vacio' : 'ejemplo',
+  // En el modo de prueba las imágenes quedan en este navegador
+  const idb = () => new Promise((res, rej) => { const r = indexedDB.open('mednoe-local', 1); r.onupgradeneeded = () => r.result.createObjectStore('img'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const tx = (modo, f) => idb().then(db => new Promise((res, rej) => { const t = db.transaction('img', modo), q = f(t.objectStore('img')); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }));
+  const urlsLocal = new Map();
+  const imagenes = {
+    async subir(blob){ const p = 'local/' + crypto.randomUUID() + '.jpg'; await tx('readwrite', st => st.put(blob, p)); return p; },
+    async urls(paths){ return Promise.all(paths.map(async p => { if (!urlsLocal.has(p)){ const b = await tx('readonly', st => st.get(p)); urlsLocal.set(p, b ? URL.createObjectURL(b) : ''); } return urlsLocal.get(p); })); },
+    async borrar(paths){ await tx('readwrite', st => { paths.forEach(p => st.delete(p)); }); }
+  };
+  window.__VDM__ = { imagenes, user: null, local: true, data: datos, inicio: new URLSearchParams(location.search).get('local') === 'vacio' ? 'vacio' : 'ejemplo',
     save: S => { try { localStorage.setItem('vdm-local', JSON.stringify(S)); } catch (e) {} }, track: () => {}, logout: () => {}, adminStats: async () => ({ usuarios: [], diario: [], eventos: [] }),
     glosario: glos.map(g => ({ ...g })), glosarioApi: api };
   import('./app.js').then(() => { authBox.hidden = true; });
