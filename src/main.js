@@ -114,9 +114,12 @@ authBox.addEventListener('submit', async e => {
 let uid = null, pendiente = null, guardando = false, ultimoSync = 0, timerGuardar = null;
 const syncErr = $('#sync-err');
 const cacheKey = () => 'vdm-cache-' + uid;
+// Marca de "hay cambios en este dispositivo que todavía no llegaron a la nube" (con la hora del cambio).
+// Si el celular cierra la app antes de subirlos, al volver a abrirla se usan estos y no la copia vieja de la nube.
+const pendKey = () => 'vdm-pend-' + uid;
 function guardar(S){
   pendiente = S;
-  try { localStorage.setItem(cacheKey(), JSON.stringify(S)); } catch (e) {}
+  try { localStorage.setItem(cacheKey(), JSON.stringify(S)); localStorage.setItem(pendKey(), String(Date.now())); } catch (e) {}
   clearTimeout(timerGuardar); timerGuardar = setTimeout(subir, 1500);
 }
 async function subir(){
@@ -132,9 +135,12 @@ async function subir(){
   } else {
     ultimoSync = Date.parse(ahora); syncErr.hidden = true;
     if (pendiente){ clearTimeout(timerGuardar); timerGuardar = setTimeout(subir, 1500); }
+    else try { localStorage.removeItem(pendKey()); } catch (e) {}
   }
 }
 window.addEventListener('online', () => { if (pendiente) subir(); });
+// al cerrar o cambiar de app se intenta subir lo último (el pedido sigue aunque la página se cierre)
+window.addEventListener('pagehide', () => { if (pendiente){ clearTimeout(timerGuardar); subir(); } enviarEventos(); });
 
 /* ---------- registro de uso ---------- */
 let sesionId = null, tick = Date.now(), eventos = [], ocultoDesde = 0;
@@ -163,7 +169,7 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 /* ---------- entrar a la app ---------- */
-let entrando = false;
+let entrando = false, subirAlEntrar = false;
 async function entrar(user){
   if (entrando) return; entrando = true;
   uid = user.id;
@@ -176,7 +182,12 @@ async function entrar(user){
   if (error){
     if (!cache){ entrando = false; return pantalla(`<h1>No se pudo cargar</h1><p class="muted small">${esc(errorTexto(error))}</p><button class="btn pri" onclick="location.reload()">Reintentar</button>`); }
     datos = cache; syncErr.textContent = 'Sin conexión con la nube: estás viendo lo guardado en este dispositivo.'; syncErr.hidden = false;
-  } else if (fila){ datos = fila.data; ultimoSync = Date.parse(fila.updated_at); }
+  } else if (fila){
+    datos = fila.data; ultimoSync = Date.parse(fila.updated_at);
+    // la última vez se cerró antes de subir: lo de este dispositivo es más nuevo que la nube
+    let marca = 0; try { marca = Number(localStorage.getItem(pendKey())) || 0; } catch (e) {}
+    if (cache && marca > ultimoSync){ datos = cache; subirAlEntrar = true; }
+  }
   else if (cache) datos = cache;
   else inicio = await verBienvenida(perfil.nombre);
   // La terminología pesa bastante: si ya hay una copia guardada se abre con esa y se actualiza por detrás
@@ -185,6 +196,7 @@ async function entrar(user){
   await iniciarUso();
   track('ingreso', dispositivo());
   arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio, glosario);
+  if (subirAlEntrar) guardar(datos);
   if (guardado) fresco.then(lista => { if (lista && window.__VDM__ && window.__VDM__.alGlosario) window.__VDM__.alGlosario(lista); });
 }
 

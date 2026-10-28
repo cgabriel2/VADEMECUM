@@ -322,6 +322,8 @@ if (S.v === 2) addV3(S); // suma lo de la versión 3 sin tocar lo que ya se carg
 if (nuevo) save();
 // Terminología: términos propios de la cuenta y progreso de práctica (los compartidos vienen de la base)
 if (!S.glosario) S.glosario = { propios: [], stats: {}, hist: [] };
+// correcciones propias de términos compartidos: { [id]: { term, def, cat, src } } (las demás cuentas siguen viendo el original)
+if (!S.glosario.ajustes) S.glosario.ajustes = {};
 // Fichas generales (anatomía, microbiología…), carpetas y plantillas de campos de cada estudiante
 if (!S.fichas.generales) S.fichas.generales = [];
 if (!S.carpetas) S.carpetas = [];
@@ -2674,7 +2676,9 @@ const tmInvalidar = () => { tmCache = null; };
 const tmClave = s => s.replace(/^-/, '');
 function terminos(){
   if (tmCache) return tmCache;
-  const g = GL.global.map(x => ({ key:'g:' + x.id, id:x.id, term:x.term, def:x.definition, cat:x.category || '', src:x.source || '', global:true }));
+  const aj = S.glosario.ajustes || {};
+  const g = GL.global.map(x => { const a = aj[x.id]; return a ? { key:'g:' + x.id, id:x.id, term:a.term, def:a.def, cat:a.cat || '', src:a.src || '', global:true, ajustado:true }
+    : { key:'g:' + x.id, id:x.id, term:x.term, def:x.definition, cat:x.category || '', src:x.source || '', global:true }; });
   const p = (S.glosario.propios || []).map(x => ({ key:'p:' + x.id, id:x.id, term:x.term, def:x.def, cat:x.cat || '', src:x.src || '', global:false }));
   // con miles de términos, el texto normalizado se calcula una sola vez para que buscar sea instantáneo
   return tmCache = [...g, ...p].map(t => ({ ...t, tn: norm(t.term), dn: norm(t.def) }))
@@ -2725,9 +2729,9 @@ function tmLista(){
   if (!base.length && !q) return '<div class="empty">Todavía no hay términos cargados. Agregá el primero con “Agregar término”.</div>';
   return `${add}<p class="small muted" style="margin:${add ? '12px' : '0'} 0 8px">${q ? `${res.length} ${res.length === 1 ? 'resultado' : 'resultados'}` : `${base.length} ${base.length === 1 ? 'término' : 'términos'}`}${shown.length < res.length ? ` · mostrando los primeros ${shown.length}: buscá para encontrar el resto` : ''}</p>
     <div class="stack" style="gap:8px">${shown.map(t => { const st = tmStat(t.key);
-      return `<div class="doc" style="align-items:flex-start"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b>${esc(t.term)}</b>${t.cat ? `<span class="pill p-past">${esc(t.cat)}</span>` : ''}${t.global ? '' : '<span class="pill p-warm">Propio</span>'}${st.ok + st.bad ? `<span class="small muted">${st.ok} bien · ${st.bad} mal</span>` : ''}</div>
+      return `<div class="doc" style="align-items:flex-start"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b>${esc(t.term)}</b>${t.cat ? `<span class="pill p-past">${esc(t.cat)}</span>` : ''}${t.global ? (t.ajustado ? '<span class="pill p-warm">Tu versión</span>' : '') : '<span class="pill p-warm">Propio</span>'}${st.ok + st.bad ? `<span class="small muted">${st.ok} bien · ${st.bad} mal</span>` : ''}</div>
         <p class="small" style="margin-top:4px">${esc(t.def)}</p>${t.src ? `<p class="small muted" style="margin-top:2px">Fuente: ${tmFuente(t)}</p>` : ''}</div>
-        ${!t.global || esAdmin() ? `<button class="icon-btn" data-act="tm-edit" data-key="${t.key}" aria-label="Editar ${esc(t.term)}">${I('edit',15)}</button>` : ''}</div>`; }).join('')}</div>`;
+        <button class="icon-btn" data-act="tm-edit" data-key="${t.key}" aria-label="Editar ${esc(t.term)}">${I('edit',15)}</button></div>`; }).join('')}</div>`;
 }
 function tmHead(){
   return `<div class="row between"><div class="row"><div class="tabs" style="width:max-content"><button aria-selected="${TM.dir === 'td'}" data-act="tm-dir" data-d="td">Término → definición</button><button aria-selected="${TM.dir === 'dt'}" data-act="tm-dir" data-d="dt">Definición → término</button></div>
@@ -2801,9 +2805,9 @@ function tmForm(t, termIni){
       <label class="f">Fuente (opcional)<input type="text" id="tf-s" value="${esc(edit ? t.src : '')}" placeholder="Libro, apunte o link"></label></div>
       <datalist id="tf-cats">${cats.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
       ${!edit && esAdmin() ? '<label class="row small" style="gap:8px"><input type="checkbox" id="tf-g" checked>Agregarlo para todas las cuentas</label>' : ''}
-      <p class="small muted">${edit ? (t.global ? 'Es un término compartido: el cambio se ve en todas las cuentas.' : 'Es un término propio: solo lo ves vos.') : esAdmin() ? 'Si desmarcás la opción, queda solo en tu cuenta.' : 'Queda guardado en tu cuenta.'}</p>
+      <p class="small muted">${edit ? (t.global ? (esAdmin() ? 'Es un término compartido: el cambio se ve en todas las cuentas.' : 'Es un término de la app: tu corrección queda guardada solo en tu cuenta y las demás siguen viendo el original.') : 'Es un término propio: solo lo ves vos.') : esAdmin() ? 'Si desmarcás la opción, queda solo en tu cuenta.' : 'Queda guardado en tu cuenta.'}</p>
       <p class="small" id="tf-err" style="color:var(--danger)"></p>
-      <div class="row" style="justify-content:space-between">${edit ? `<button class="btn" type="button" style="color:var(--danger)" data-act="tm-del" data-key="${t.key}">${I('trash',16)}Eliminar</button>` : '<span></span>'}<div class="row"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></div></form>`);
+      <div class="row" style="justify-content:space-between">${edit && (!t.global || esAdmin()) ? `<button class="btn" type="button" style="color:var(--danger)" data-act="tm-del" data-key="${t.key}">${I('trash',16)}Eliminar</button>` : edit && t.ajustado ? `<button class="btn" type="button" data-act="tm-orig" data-key="${t.key}">${I('redo',16)}Volver al original</button>` : '<span></span>'}<div class="row"><button class="btn" type="button" data-act="close-modal">Cancelar</button><button class="btn pri" type="submit">Guardar</button></div></div></form>`);
 }
 function tmImportForm(){
   modal(`<div class="row between"><h2>Importar lista de términos</h2>${closeX()}</div>
@@ -2836,6 +2840,7 @@ Object.assign(A, {
     TM.bad--; TM.ok++; q.res = { ok:true, detail:'La marcaste como correcta.' }; save(); render(); },
   'tm-mc-pick': d => { const m = TM.mc; if (!m || m.pick !== null) return; m.pick = d.k; tmMarcar(m.key, d.k === m.key); render(); },
   'tm-mc-next': () => { TM.mc = tmNuevoMC(); render(); },
+  'tm-orig': d => { const t = tmFind(d.key); if (!t) return; delete S.glosario.ajustes[t.id]; save(); tmInvalidar(); closeModal(); render(); toast('Volvió a la definición original.'); },
   'tm-del': async (d, el) => {
     const t = tmFind(d.key); if (!t) return;
     if (!armed(el, 'Sí, eliminar término')) return;
@@ -2868,7 +2873,8 @@ document.addEventListener('submit', async e => {
     try {
       if (key){
         const t = tmFind(key);
-        if (t.global){ const row = await GL.api.editar(t.id, { term, definition: def, category: cat, source: src }); Object.assign(GL.global.find(x => x.id === t.id), row); }
+        if (t.global && !esAdmin()) S.glosario.ajustes[t.id] = { term, def, cat, src };
+        else if (t.global){ const row = await GL.api.editar(t.id, { term, definition: def, category: cat, source: src }); Object.assign(GL.global.find(x => x.id === t.id), row); }
         else Object.assign(S.glosario.propios.find(x => x.id === t.id), { term, def, cat, src });
       } else if ($('#tf-g') && $('#tf-g').checked && GL.api){ const row = await GL.api.agregar({ term, definition: def, category: cat, source: src }); GL.global.push(row); }
       else S.glosario.propios.push({ id: uid(), term, def, cat, src });
