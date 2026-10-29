@@ -462,3 +462,6 @@ body.visor-abierto{overflow:hidden}
 .visor-ant{left:4px} .visor-sig{right:4px}
 .visor-texto{margin:12px auto 0;max-width:720px;border:0;background:rgba(245,238,221,.12);color:#F5EEDD;padding:10px 14px;border-radius:10px;font-size:.95rem;text-align:center;cursor:pointer}
 .visor-texto.oculto{font-style:italic;opacity:.8}
+/* Aviso del pomodoro al terminar */
+.pomo-aviso{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:8px 4px}
+.pomo-aviso-ico{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}

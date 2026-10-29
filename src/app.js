@@ -1990,11 +1990,19 @@ function renderPomo(){
     <div class="stack" style="gap:10px;padding:12px 8px 4px"><label class="f">Estudiando<select id="pm-m" data-change="pm-m"><option value="">Sin materia</option>${cursando().map(m => `<option value="${m.id}" ${S.pomo.materiaId === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
       <div class="row small" style="gap:6px">Bloques: ${[[25, 5], [50, 10]].map(([f, p]) => `<button class="chip ${S.pomo.foco === f ? 'on' : ''}" data-act="pm-preset" data-f="${f}" data-p="${p}">${f} min + ${p} de descanso</button>`).join('')}</div>
       <div class="row small" style="gap:6px">Sonido al terminar: <button class="chip ${S.pomo.sonido !== false ? 'on' : ''}" data-act="pm-sonido" aria-pressed="${S.pomo.sonido !== false}">${S.pomo.sonido !== false ? 'Activado' : 'Desactivado'}</button><button class="chip" data-act="pm-probar">Probar sonido</button></div>
+      ${'wakeLock' in navigator ? `<div class="row small" style="gap:6px">Pantalla encendida mientras corre: <button class="chip ${S.pomo.pantalla !== false ? 'on' : ''}" data-act="pm-pantalla" aria-pressed="${S.pomo.pantalla !== false}">${S.pomo.pantalla !== false ? 'Sí' : 'No'}</button></div>` : ''}
+      ${'Notification' in window ? `<div class="row small" style="gap:6px">Notificación al terminar: <button class="chip ${S.pomo.notif === true && Notification.permission === 'granted' ? 'on' : ''}" data-act="pm-notif" aria-pressed="${S.pomo.notif === true}">${S.pomo.notif === true && Notification.permission === 'granted' ? 'Activada' : 'Desactivada'}</button></div>` : ''}
+      <p class="small muted">Para que suene, dejá la app abierta (la pantalla no se apaga mientras corre). Si bloqueás el celular o cambiás de app, el teléfono la pausa: el aviso aparece cuando vuelvas a abrirla.</p>
       <p class="small muted">Hoy registraste <b>${fmtMin(hoyMin)}</b> de estudio. Cada bloque completo suma a tu racha y a Progreso.</p></div>`;
 }
-// Campana al terminar un bloque o un descanso. Se agenda en el reloj de audio, así suena a tiempo
-// aunque el navegador frene los temporizadores de la pestaña cuando está en segundo plano.
+/* Aviso al terminar un bloque o un descanso.
+   - El sonido sale de un archivo de audio (no del sintetizador): en el iPhone suena aunque esté en silencio.
+   - Mientras corre, la pantalla queda encendida: si el celular se bloquea, el navegador congela la app y no puede sonar.
+   - En la computadora el sonido además se agenda en el reloj de audio, así suena a tiempo aunque la pestaña esté de fondo.
+   - El pomodoro se guarda en el dispositivo: si la app se cierra o se recarga, sigue (o avisa que terminó). */
+const PM_KEY = 'vdm-pomo', escritorio = matchMedia('(pointer: fine)').matches && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 function audioPomo(){
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
   if (!PM.actx){ try { PM.actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { PM.actx = null; } }
   try { PM.actx && PM.actx.resume && PM.actx.resume(); } catch (e) {}
   return PM.actx;
@@ -2007,22 +2015,76 @@ function campana(ctx, t0){
     o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.15); })));
   return out;
 }
+// la misma campana, armada como archivo WAV
+function wavCampana(){
+  const sr = 22050, n = Math.floor(sr * 2.9), d = new Float32Array(n);
+  [0, 1.4].forEach(r => [[0, 1046.5], [0.18, 1318.5], [0.36, 1568]].forEach(([dd, f]) => [[1, 0.5], [2.76, 0.12]].forEach(([h, a]) => {
+    const i0 = Math.floor((r + dd) * sr), fin = Math.min(n, i0 + Math.floor(1.15 * sr));
+    for (let i = i0; i < fin; i++){ const t = (i - i0) / sr; d[i] += a * (t < 0.01 ? t / 0.01 : Math.exp(-(t - 0.01) * 7.8)) * Math.sin(2 * Math.PI * f * h * t); } })));
+  let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, Math.abs(d[i])); const k = 0.95 / (mx || 1);
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i] * k)) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+const audioEl = () => { if (!PM.audio){ PM.audio = new Audio(wavCampana()); PM.audio.preload = 'auto'; } return PM.audio; };
+// el celular solo deja sonar más tarde si el audio se "destrabó" con un toque: se hace al tocar Empezar
+function pomoDestrabar(){
+  audioPomo(); const a = audioEl(); if (PM.destrabado) return;
+  a.muted = true; const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; PM.destrabado = true; }, () => { a.muted = false; }); else a.muted = false;
+}
+function sonar(){
+  const a = audioEl(); a.muted = false; a.volume = 1; try { a.currentTime = 0; } catch (e) {}
+  const conCampana = () => { const ctx = audioPomo(); if (ctx){ try { campana(ctx, ctx.currentTime + 0.05); } catch (e) {} } };
+  try { const p = a.play(); if (p && p.catch) p.catch(conCampana); } catch (e) { conCampana(); }
+}
 function pomoAgendar(){
   const ctx = PM.actx;
   if (PM.son && ctx && ctx.currentTime < PM.sonT0 - 0.05){ try { PM.son.disconnect(); } catch (e) {} }
   PM.son = null; PM.sonPara = 0;
-  if (!ctx || !PM.running || S.pomo.sonido === false) return;
+  if (!escritorio || !ctx || ctx.state !== 'running' || !PM.running || S.pomo.sonido === false) return;
   try { PM.sonT0 = ctx.currentTime + Math.max(0, (PM.endsAt - Date.now()) / 1000); PM.son = campana(ctx, PM.sonT0); PM.sonPara = PM.endsAt; } catch (e) {}
 }
+// pantalla encendida mientras corre el pomodoro (si el navegador lo permite)
+async function pomoPantalla(){
+  try {
+    const quiere = PM.running && S.pomo.pantalla !== false && document.visibilityState === 'visible';
+    if (quiere && !PM.lock && 'wakeLock' in navigator){ PM.lock = await navigator.wakeLock.request('screen'); PM.lock.addEventListener('release', () => { PM.lock = null; }); }
+    else if (!quiere && PM.lock){ const l = PM.lock; PM.lock = null; await l.release(); }
+  } catch (e) { PM.lock = null; }
+}
+function pomoGuardar(){ try { localStorage.setItem(PM_KEY, JSON.stringify({ phase: PM.phase, running: PM.running, endsAt: PM.endsAt, left: PM.left })); } catch (e) {} }
 function logSesion(min){ min = Math.round(min); if (min < 1) return; S.sesiones.push({ id: uid(), t: Date.now(), materiaId: S.pomo.materiaId || '', min }); markStudy(); save(); track('pomodoro', min); if (R.view === 'progreso') render(); }
-function pomoSet(phase, running){ PM.phase = phase; PM.left = pmFull(); PM.running = running; PM.endsAt = Date.now() + PM.left * 1000; pomoAgendar(); }
-function pomoPhaseEnd(){
+function pomoSet(phase, running){ PM.phase = phase; PM.left = pmFull(); PM.running = running; PM.endsAt = Date.now() + PM.left * 1000; pomoAgendar(); pomoGuardar(); pomoPantalla(); }
+// notificación del sistema (si la persona la activó): sirve cuando la app quedó de fondo
+function pomoNotificar(texto){
+  if (S.pomo.notif !== true || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const op = { body: texto, icon: '/icon-192.png', badge: '/icon-192.png', tag: 'pomodoro', renotify: true, vibrate: [300, 150, 300] };
+  const directo = () => { try { new Notification('MedNoe · Pomodoro', op); } catch (e) {} };
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(r => r.showNotification('MedNoe · Pomodoro', op)).catch(directo); else directo();
+}
+// aviso que queda en pantalla hasta que lo cierres (salvo que estés en medio de otro formulario)
+function pomoAviso(titulo, texto, botones){
+  if (!$('#modal').hidden){ toast(/[!?.]$/.test(titulo) ? `${titulo} ${texto}` : `${titulo}. ${texto}`); return; }
+  modal(`<div class="pomo-aviso"><span class="pomo-aviso-ico">${I('timer',28)}</span><h2>${titulo}</h2><p class="muted">${texto}</p><div class="row" style="justify-content:center">${botones}</div></div>`);
+}
+function pomoPhaseEnd(cuando){
   if (S.pomo.sonido !== false){
-    if (PM.sonPara !== PM.endsAt && PM.actx){ try { campana(PM.actx, PM.actx.currentTime); } catch (e) {} }
-    try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (e) {}
+    const yaSono = PM.sonPara === PM.endsAt && PM.actx && PM.actx.currentTime >= PM.sonT0 - 0.2;
+    if (!yaSono && !cuando) sonar();
+    try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 300]); } catch (e) {}
   }
-  if (PM.phase === 'foco'){ logSesion(S.pomo.foco); pomoSet('pausa', true); toast(`¡Bloque terminado! Tomate ${S.pomo.pausa} minutos de descanso.`); }
-  else { pomoSet('foco', false); toast('Terminó el descanso. Cuando quieras, arrancá otro bloque.'); }
+  const hora = cuando ? ` (a las ${new Date(cuando).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })})` : '';
+  if (PM.phase === 'foco'){
+    logSesion(S.pomo.foco);
+    if (cuando){ pomoSet('foco', false); pomoAviso('Tu bloque de foco terminó' + hora, 'La app estaba cerrada, así que no pudo avisarte en el momento. Ya quedó registrado.', `<button class="btn pri" data-act="close-modal">Entendido</button>`); }
+    else { pomoSet('pausa', true); pomoNotificar(`¡Bloque terminado! Tomate ${S.pomo.pausa} minutos de descanso.`); pomoAviso('¡Bloque terminado!', `Ya empezó tu descanso de ${S.pomo.pausa} minutos.`, `<button class="btn pri" data-act="close-modal">Entendido</button><button class="btn" data-act="pm-saltar-desc">Saltar el descanso</button>`); }
+  } else {
+    pomoSet('foco', false);
+    if (!cuando) pomoNotificar('Terminó el descanso. Cuando quieras, arrancá otro bloque.');
+    pomoAviso('Terminó el descanso' + hora, 'Cuando quieras, arrancá otro bloque.', `<button class="btn pri" data-act="pm-otro">${I('play',16)}Empezar otro bloque</button><button class="btn" data-act="close-modal">Ahora no</button>`);
+  }
   if (!$('#pomo-panel').hidden) renderPomo();
 }
 function pomoTick(){
@@ -2031,6 +2093,8 @@ function pomoTick(){
   if (PM.left <= 0) pomoPhaseEnd();
   pomoBtn(); const big = $('#pm-big'); if (big) big.textContent = fmtClock(PM.left * 1000);
 }
+// al volver a la app: se revisa el reloj enseguida y se vuelve a pedir la pantalla encendida
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; audioPomo(); pomoTick(); pomoAgendar(); pomoPantalla(); });
 
 /* ---------- carrera: correlatividades y regularidades ---------- */
 const ESTADOS = [['aprobada','Aprobada'],['regular','Regular'],['cursando','Cursando'],['pendiente','Pendiente']];
@@ -2417,15 +2481,23 @@ Texto del examen:
   pomo: () => { const p = $('#pomo-panel'); if (!p.hidden){ p.hidden = true; return; } $('#notif').hidden = true; renderPomo(); p.hidden = false; },
   'pomo-open': () => { closeModal(); $('#notif').hidden = true; renderPomo(); $('#pomo-panel').hidden = false; },
   'pm-toggle': () => {
-    audioPomo();
+    pomoDestrabar();
     if (PM.running){ PM.left = Math.max(0, Math.round((PM.endsAt - Date.now()) / 1000)); PM.running = false; }
     else { PM.endsAt = Date.now() + PM.left * 1000; PM.running = true; }
-    pomoAgendar(); renderPomo(); pomoBtn(); },
+    pomoAgendar(); pomoGuardar(); pomoPantalla(); renderPomo(); pomoBtn(); },
+  'pm-pantalla': () => { S.pomo.pantalla = S.pomo.pantalla === false; save(); pomoPantalla(); renderPomo(); },
+  'pm-notif': async () => {
+    if (S.pomo.notif === true && Notification.permission === 'granted'){ S.pomo.notif = false; save(); renderPomo(); return; }
+    let p = Notification.permission; if (p === 'default'){ try { p = await Notification.requestPermission(); } catch (e) {} }
+    if (p === 'granted'){ S.pomo.notif = true; save(); } else toast('El navegador no dio permiso para notificaciones. Se puede habilitar desde los ajustes del navegador o del teléfono.');
+    renderPomo(); },
+  'pm-otro': () => { closeModal(); pomoDestrabar(); pomoSet('foco', true); renderPomo(); pomoBtn(); },
+  'pm-saltar-desc': () => { closeModal(); pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-sonido': () => { S.pomo.sonido = S.pomo.sonido === false; save(); if (S.pomo.sonido) audioPomo(); pomoAgendar(); renderPomo(); },
-  'pm-probar': () => { const ctx = audioPomo(); if (ctx){ try { campana(ctx, ctx.currentTime + 0.05); } catch (e) {} } },
+  'pm-probar': () => { audioPomo(); PM.destrabado = true; sonar(); },
   'pm-reset': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); } pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-skip': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); pomoSet('pausa', false); } else pomoSet('foco', false); renderPomo(); pomoBtn(); },
-  'pm-preset': d => { S.pomo.foco = +d.f; S.pomo.pausa = +d.p; save(); if (!PM.running) PM.left = pmFull(); renderPomo(); pomoBtn(); }
+  'pm-preset': d => { S.pomo.foco = +d.f; S.pomo.pausa = +d.p; save(); if (!PM.running){ PM.left = pmFull(); pomoGuardar(); } renderPomo(); pomoBtn(); }
 });
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]');
@@ -2990,5 +3062,12 @@ $('#fab').innerHTML = I('spark', 20) + '<span class="lbl">Preguntale a la IA</sp
 $('#ai-x').innerHTML = I('x', 18);
 $('#ai-send').innerHTML = I('send', 16);
 renderStreak();
-PM.left = pmFull(); pomoBtn(); setInterval(pomoTick, 1000);
+PM.left = pmFull();
+(() => { let g = null; try { g = JSON.parse(localStorage.getItem(PM_KEY)); } catch (e) {}
+  if (!g || !['foco', 'pausa'].includes(g.phase)) return;
+  PM.phase = g.phase; PM.left = Math.max(0, Math.min(+g.left || 0, pmFull())) || pmFull();
+  if (g.running && g.endsAt > Date.now()){ PM.running = true; PM.endsAt = g.endsAt; PM.left = Math.round((g.endsAt - Date.now()) / 1000); pomoPantalla(); }
+  else if (g.running){ PM.endsAt = g.endsAt; setTimeout(() => pomoPhaseEnd(g.endsAt), 600); }
+})();
+pomoBtn(); setInterval(pomoTick, 1000);
 render();

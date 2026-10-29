@@ -31,3 +31,9 @@ self.addEventListener('fetch', e => {
     return r;
   })));
 });
+
+// Tocar la notificación del pomodoro trae la app al frente (o la abre)
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => cs.length ? cs[0].focus() : self.clients.openWindow('/')));
+});
