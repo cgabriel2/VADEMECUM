@@ -1991,8 +1991,8 @@ function renderPomo(){
       <div class="row small" style="gap:6px">Bloques: ${[[25, 5], [50, 10]].map(([f, p]) => `<button class="chip ${S.pomo.foco === f ? 'on' : ''}" data-act="pm-preset" data-f="${f}" data-p="${p}">${f} min + ${p} de descanso</button>`).join('')}</div>
       <div class="row small" style="gap:6px">Sonido al terminar: <button class="chip ${S.pomo.sonido !== false ? 'on' : ''}" data-act="pm-sonido" aria-pressed="${S.pomo.sonido !== false}">${S.pomo.sonido !== false ? 'Activado' : 'Desactivado'}</button><button class="chip" data-act="pm-probar">Probar sonido</button></div>
       ${'wakeLock' in navigator ? `<div class="row small" style="gap:6px">Pantalla encendida mientras corre: <button class="chip ${S.pomo.pantalla !== false ? 'on' : ''}" data-act="pm-pantalla" aria-pressed="${S.pomo.pantalla !== false}">${S.pomo.pantalla !== false ? 'Sí' : 'No'}</button></div>` : ''}
-      ${'Notification' in window ? `<div class="row small" style="gap:6px">Notificación al terminar: <button class="chip ${S.pomo.notif === true && Notification.permission === 'granted' ? 'on' : ''}" data-act="pm-notif" aria-pressed="${S.pomo.notif === true}">${S.pomo.notif === true && Notification.permission === 'granted' ? 'Activada' : 'Desactivada'}</button></div>` : ''}
-      <p class="small muted">Para que suene, dejá la app abierta (la pantalla no se apaga mientras corre). Si bloqueás el celular o cambiás de app, el teléfono la pausa: el aviso aparece cuando vuelvas a abrirla.</p>
+      ${PUSH ? pushOpcion() : 'Notification' in window ? `<div class="row small" style="gap:6px">Notificación al terminar: <button class="chip ${S.pomo.notif === true && Notification.permission === 'granted' ? 'on' : ''}" data-act="pm-notif" aria-pressed="${S.pomo.notif === true}">${S.pomo.notif === true && Notification.permission === 'granted' ? 'Activada' : 'Desactivada'}</button></div>` : ''}
+      <p class="small muted">${PUSH && S.pomo.push === true ? 'Te llega una notificación al terminar aunque bloquees el celular o cierres la app. Con la app abierta, además suena la campana.' : 'Para que suene, dejá la app abierta (la pantalla no se apaga mientras corre). Si bloqueás el celular o cambiás de app, el teléfono la pausa: el aviso aparece cuando vuelvas a abrirla.'}</p>
       <p class="small muted">Hoy registraste <b>${fmtMin(hoyMin)}</b> de estudio. Cada bloque completo suma a tu racha y a Progreso.</p></div>`;
 }
 /* Aviso al terminar un bloque o un descanso.
@@ -2046,6 +2046,12 @@ function pomoAgendar(){
   if (!escritorio || !ctx || ctx.state !== 'running' || !PM.running || S.pomo.sonido === false) return;
   try { PM.sonT0 = ctx.currentTime + Math.max(0, (PM.endsAt - Date.now()) / 1000); PM.son = campana(ctx, PM.sonT0); PM.sonPara = PM.endsAt; } catch (e) {}
 }
+// opción de avisos con la app cerrada; en iPhone solo se puede con la app instalada en la pantalla de inicio
+function pushOpcion(){
+  if (PUSH.esIphone() && !PUSH.instalada()) return '<p class="small note">Para que te avise con el celular bloqueado, instalá la app: en Safari tocá Compartir → <b>Agregar a inicio</b> y abrila desde ese ícono.</p>';
+  const on = S.pomo.push === true && Notification.permission === 'granted';
+  return `<div class="row small" style="gap:6px">Avisarme aunque el celular esté bloqueado: <button class="chip ${on ? 'on' : ''}" data-act="pm-push" aria-pressed="${on}">${on ? 'Activado' : 'Desactivado'}</button></div>`;
+}
 // pantalla encendida mientras corre el pomodoro (si el navegador lo permite)
 async function pomoPantalla(){
   try {
@@ -2054,12 +2060,24 @@ async function pomoPantalla(){
     else if (!quiere && PM.lock){ const l = PM.lock; PM.lock = null; await l.release(); }
   } catch (e) { PM.lock = null; }
 }
-function pomoGuardar(){ try { localStorage.setItem(PM_KEY, JSON.stringify({ phase: PM.phase, running: PM.running, endsAt: PM.endsAt, left: PM.left })); } catch (e) {} }
+function pomoGuardar(){ try { localStorage.setItem(PM_KEY, JSON.stringify({ phase: PM.phase, running: PM.running, endsAt: PM.endsAt, left: PM.left })); } catch (e) {} pomoPush(); }
+// aviso desde el servidor (llega aunque la app esté cerrada): se programa al arrancar y se cancela al pausar o reiniciar
+const PUSH = HOST.push && HOST.push.disponible() ? HOST.push : null;
+function pomoPush(){
+  if (!PUSH || S.pomo.push !== true) return;
+  const clave = PM.running ? PM.phase + PM.endsAt : '';
+  if (clave === PM.pushClave) return; PM.pushClave = clave;
+  const p = PM.running ? PUSH.programar(PM.endsAt, PM.phase === 'foco' ? '¡Bloque terminado!' : 'Terminó el descanso', PM.phase === 'foco' ? `Tomate ${S.pomo.pausa} minutos de descanso.` : 'Cuando quieras, arrancá otro bloque.') : PUSH.cancelar();
+  p.catch(() => { PM.pushClave = null; });
+}
 function logSesion(min){ min = Math.round(min); if (min < 1) return; S.sesiones.push({ id: uid(), t: Date.now(), materiaId: S.pomo.materiaId || '', min }); markStudy(); save(); track('pomodoro', min); if (R.view === 'progreso') render(); }
 function pomoSet(phase, running){ PM.phase = phase; PM.left = pmFull(); PM.running = running; PM.endsAt = Date.now() + PM.left * 1000; pomoAgendar(); pomoGuardar(); pomoPantalla(); }
-// notificación del sistema (si la persona la activó): sirve cuando la app quedó de fondo
+// notificación del sistema cuando la app quedó de fondo pero sigue viva (computadora, Android).
+// Si la app la detecta, borra el aviso del servidor al pasar al descanso, así no llega dos veces.
 function pomoNotificar(texto){
-  if (S.pomo.notif !== true || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return;
+  if (!(PUSH && S.pomo.push === true) && S.pomo.notif !== true) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const op = { body: texto, icon: '/icon-192.png', badge: '/icon-192.png', tag: 'pomodoro', renotify: true, vibrate: [300, 150, 300] };
   const directo = () => { try { new Notification('MedNoe · Pomodoro', op); } catch (e) {} };
   if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(r => r.showNotification('MedNoe · Pomodoro', op)).catch(directo); else directo();
@@ -2485,6 +2503,12 @@ Texto del examen:
     if (PM.running){ PM.left = Math.max(0, Math.round((PM.endsAt - Date.now()) / 1000)); PM.running = false; }
     else { PM.endsAt = Date.now() + PM.left * 1000; PM.running = true; }
     pomoAgendar(); pomoGuardar(); pomoPantalla(); renderPomo(); pomoBtn(); },
+  'pm-push': async (d, el) => {
+    if (S.pomo.push === true){ S.pomo.push = false; save(); PM.pushClave = null; PUSH.desactivar().catch(() => {}); renderPomo(); return; }
+    el.disabled = true; el.textContent = 'Activando…';
+    try { await PUSH.activar(); S.pomo.push = true; save(); PM.pushClave = null; pomoPush(); toast('Listo: te va a llegar una notificación al terminar cada bloque, aunque el celular esté bloqueado.'); }
+    catch (e) { toast(e.message === 'permiso' ? 'El teléfono no dio permiso para notificaciones. Se habilita desde Ajustes → Notificaciones → MedNoe.' : (e.message || 'No se pudo activar.')); }
+    renderPomo(); },
   'pm-pantalla': () => { S.pomo.pantalla = S.pomo.pantalla === false; save(); pomoPantalla(); renderPomo(); },
   'pm-notif': async () => {
     if (S.pomo.notif === true && Notification.permission === 'granted'){ S.pomo.notif = false; save(); renderPomo(); return; }

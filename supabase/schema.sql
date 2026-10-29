@@ -182,3 +182,36 @@ create policy "imagenes fichas: subir propias" on storage.objects for insert to 
 drop policy if exists "imagenes fichas: borrar propias" on storage.objects;
 create policy "imagenes fichas: borrar propias" on storage.objects for delete to authenticated
   using (bucket_id = 'fichas' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Avisos del pomodoro con la app cerrada (notificaciones push).
+-- Las claves (VAPID y el token del cron) viven en Vault: el token se crea en SQL y el par VAPID lo genera
+-- la función supabase/functions/pomodoro-avisos la primera vez. Ninguna clave privada está en el código.
+create extension if not exists pg_net with schema extensions;
+create extension if not exists pg_cron;
+create table if not exists public.push_suscripciones (
+  id bigint generated always as identity primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  endpoint text not null unique, p256dh text not null, auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_suscripciones_user_idx on public.push_suscripciones (user_id);
+alter table public.push_suscripciones enable row level security;
+create policy "push: ver propias" on public.push_suscripciones for select to authenticated using (user_id = (select auth.uid()));
+create policy "push: crear propias" on public.push_suscripciones for insert to authenticated with check (user_id = (select auth.uid()));
+create policy "push: actualizar propias" on public.push_suscripciones for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+create policy "push: borrar propias" on public.push_suscripciones for delete to authenticated using (user_id = (select auth.uid()));
+create table if not exists public.push_alarmas (
+  id bigint generated always as identity primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  avisar_en timestamptz not null, titulo text not null, cuerpo text not null,
+  enviada timestamptz, created_at timestamptz not null default now()
+);
+create index if not exists push_alarmas_pendientes_idx on public.push_alarmas (avisar_en) where enviada is null;
+create index if not exists push_alarmas_user_idx on public.push_alarmas (user_id);
+alter table public.push_alarmas enable row level security;
+create policy "alarmas: ver propias" on public.push_alarmas for select to authenticated using (user_id = (select auth.uid()));
+create policy "alarmas: crear propias" on public.push_alarmas for insert to authenticated with check (user_id = (select auth.uid()));
+create policy "alarmas: borrar propias" on public.push_alarmas for delete to authenticated using (user_id = (select auth.uid()));
+-- push_config() y push_guardar_claves(): solo service_role. push_vapid_publica(): authenticated (la clave pública no es secreta).
+-- Cron 'avisos-pomodoro' cada 30 segundos: llama a la función solo si hay avisos vencidos.
+-- Cron 'limpiar-cron' diario: borra el historial del cron de más de 2 días.

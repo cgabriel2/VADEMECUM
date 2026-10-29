@@ -256,10 +256,45 @@ const imagenes = {
   },
   async borrar(paths){ if (paths.length) await supabase.storage.from(BUCKET_IMG).remove(paths); }
 };
+/* ---------- avisos del pomodoro con la app cerrada (notificaciones push) ----------
+   El celular se registra una vez; al empezar un bloque se anota en la base "avisar a tal hora"
+   y un programa en Supabase manda la notificación aunque la app esté cerrada o el celular bloqueado. */
+const bytesB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+const push = {
+  disponible: () => import.meta.env.PROD && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
+  // en el iPhone solo funciona con la app instalada en la pantalla de inicio
+  esIphone: () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+  instalada: () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+  async activo(){
+    if (!push.disponible() || Notification.permission !== 'granted') return false;
+    const reg = await navigator.serviceWorker.getRegistration(); return !!(reg && await reg.pushManager.getSubscription());
+  },
+  async activar(){
+    let p = Notification.permission; if (p === 'default') p = await Notification.requestPermission();
+    if (p !== 'granted') throw new Error('permiso');
+    const reg = await navigator.serviceWorker.ready;
+    const { data: clave, error } = await supabase.rpc('push_vapid_publica'); if (error || !clave) throw new Error('No se pudo preparar los avisos. Probá de nuevo en un rato.');
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytesB64u(clave) });
+    const j = sub.toJSON();
+    const { error: e2 } = await supabase.from('push_suscripciones').upsert({ user_id: uid, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: 'endpoint' });
+    if (e2) throw new Error(errorTexto(e2));
+  },
+  async desactivar(){
+    await push.cancelar();
+    const reg = await navigator.serviceWorker.getRegistration(), sub = reg && await reg.pushManager.getSubscription();
+    if (sub){ await supabase.from('push_suscripciones').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+  },
+  async programar(fecha, titulo, cuerpo){
+    await supabase.from('push_alarmas').delete().eq('user_id', uid).is('enviada', null);
+    const { error } = await supabase.from('push_alarmas').insert({ avisar_en: new Date(fecha).toISOString(), titulo, cuerpo });
+    if (error) throw new Error(errorTexto(error));
+  },
+  async cancelar(){ await supabase.from('push_alarmas').delete().eq('user_id', uid).is('enviada', null); }
+};
 async function estadisticas(){ const { data, error } = await supabase.rpc('admin_stats'); if (error) throw new Error(errorTexto(error)); return data; }
 
 function arrancar(user, data, inicio, glos){
-  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario, imagenes };
+  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario, imagenes, push };
   import('./app.js').then(() => { authBox.hidden = true; authBox.innerHTML = ''; });
 }
 

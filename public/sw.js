@@ -32,6 +32,11 @@ self.addEventListener('fetch', e => {
   })));
 });
 
+// Aviso del pomodoro que llega del servidor (aunque la app esté cerrada)
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) {}
+  e.waitUntil(self.registration.showNotification(d.titulo || 'MedNoe', { body: d.cuerpo || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: 'pomodoro', renotify: true, requireInteraction: true, vibrate: [300, 150, 300, 150, 300] }));
+});
 // Tocar la notificación del pomodoro trae la app al frente (o la abre)
 self.addEventListener('notificationclick', e => {
   e.notification.close();
