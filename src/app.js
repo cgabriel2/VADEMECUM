@@ -2832,6 +2832,13 @@ function terminos(){
     .sort((a, b) => tmClave(a.term).localeCompare(tmClave(b.term), 'es', { sensitivity:'base' }));
 }
 // La lista compartida llega actualizada de la nube después de abrir la app (se abre con la guardada)
+// Llegaron cambios de otro dispositivo: se combinan con lo que hay acá (si estás escribiendo, no se te mueve la pantalla)
+HOST.alDatos = fn => {
+  S = fn(S); tmInvalidar();
+  const escribiendo = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (!escribiendo && $('#modal').hidden) render();
+  return S;
+};
 HOST.alGlosario = lista => {
   GL.global = lista.slice(); tmInvalidar();
   const escribiendo = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
@@ -3148,4 +3155,5 @@ PM.left = pmFull();
   else if (g.running){ PM.endsAt = g.endsAt; setTimeout(() => pomoPhaseEnd(g.endsAt), 600); }
 })();
 pomoBtn(); setInterval(pomoTick, 1000);
+if (HOST.rescatadas) toast(`Se recuperó lo que estaba guardado en este dispositivo y faltaba en tu cuenta (${HOST.rescatadas}).`);
 render();

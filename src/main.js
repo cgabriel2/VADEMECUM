@@ -1,6 +1,7 @@
 // Arranque de la app: inicio de sesión, carga y guardado de los datos en Supabase y registro de uso.
 // Cuando la cuenta está lista, carga app.js (la app de estudio) con todo preparado en window.__VDM__.
 import { supabase, esRecuperacion } from './supabase.js';
+import { crearSync } from './sync.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -111,39 +112,28 @@ authBox.addEventListener('submit', async e => {
 });
 
 /* ---------- guardado en la nube ---------- */
-let uid = null, pendiente = null, guardando = false, ultimoSync = 0, timerGuardar = null;
+let uid = null, sync = null;
 const syncErr = $('#sync-err');
-const cacheKey = () => 'vdm-cache-' + uid;
-// Marca de "hay cambios en este dispositivo que todavía no llegaron a la nube" (con la hora del cambio).
-// Si el celular cierra la app antes de subirlos, al volver a abrirla se usan estos y no la copia vieja de la nube.
-const pendKey = () => 'vdm-pend-' + uid;
-function guardar(S){
-  pendiente = S;
-  try { localStorage.setItem(cacheKey(), JSON.stringify(S)); localStorage.setItem(pendKey(), String(Date.now())); } catch (e) {}
-  clearTimeout(timerGuardar); timerGuardar = setTimeout(subir, 1500);
+const guardar = S => { if (sync) sync.guardar(S); };
+function prepararSync(){
+  const fila = () => supabase.from('user_data');
+  sync = crearSync({ uid, local: localStorage,
+    nube: {
+      leer: () => fila().select('data, updated_at').eq('user_id', uid).maybeSingle(),
+      leerHora: () => fila().select('updated_at').eq('user_id', uid).maybeSingle(),
+      // solo escribe si la nube sigue como la última vez que este dispositivo la vio
+      escribir: (data, updated_at, hora) => fila().update({ data, updated_at }).eq('user_id', uid).eq('updated_at', hora).select('updated_at'),
+      crear: (data, updated_at) => fila().upsert({ user_id: uid, data, updated_at }).select('updated_at')
+    },
+    alDatos: fn => (window.__VDM__ && window.__VDM__.alDatos ? window.__VDM__.alDatos(fn) : null),
+    alEstado: txt => { if (txt) syncErr.textContent = txt; syncErr.hidden = !txt; } });
 }
-async function subir(){
-  if (!pendiente || guardando) return;
-  guardando = true; const datos = pendiente; pendiente = null;
-  const ahora = new Date().toISOString();
-  const { error } = await supabase.from('user_data').upsert({ user_id: uid, data: datos, updated_at: ahora });
-  guardando = false;
-  if (error){
-    if (!pendiente) pendiente = datos;
-    syncErr.textContent = 'No se pudo guardar en la nube. Tus cambios quedan en este dispositivo y se reintenta solo.'; syncErr.hidden = false;
-    clearTimeout(timerGuardar); timerGuardar = setTimeout(subir, 15000);
-  } else {
-    ultimoSync = Date.parse(ahora); syncErr.hidden = true;
-    if (pendiente){ clearTimeout(timerGuardar); timerGuardar = setTimeout(subir, 1500); }
-    else try { localStorage.removeItem(pendKey()); } catch (e) {}
-  }
-}
-window.addEventListener('online', () => { if (pendiente) subir(); });
+window.addEventListener('online', () => { if (sync) sync.subir(); });
 // al cerrar o cambiar de app se intenta subir lo último (el pedido sigue aunque la página se cierre)
-window.addEventListener('pagehide', () => { if (pendiente){ clearTimeout(timerGuardar); subir(); } enviarEventos(); });
+window.addEventListener('pagehide', () => { if (sync){ sync.cancelarEspera(); sync.subir(); } enviarEventos(); });
 
 /* ---------- registro de uso ---------- */
-let sesionId = null, tick = Date.now(), eventos = [], ocultoDesde = 0;
+let sesionId = null, tick = Date.now(), eventos = [];
 const dispositivo = () => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'Celular' : 'Computadora';
 async function iniciarUso(){
   const { data } = await supabase.from('usage_sessions').insert({ user_id: uid, device: dispositivo() }).select('id').single();
@@ -159,44 +149,37 @@ function track(evento, detalle){ if (uid) eventos.push({ user_id: uid, evento: S
 function enviarEventos(){ if (!eventos.length) return; const lote = eventos.splice(0, 200); supabase.from('usage_events').insert(lote).then(({ error }) => { if (error) eventos.unshift(...lote.slice(0, 200)); }); }
 document.addEventListener('visibilitychange', async () => {
   if (LOCAL || !uid) return;
-  if (document.visibilityState === 'hidden'){ ping(); enviarEventos(); clearTimeout(timerGuardar); subir(); ocultoDesde = Date.now(); return; }
+  if (document.visibilityState === 'hidden'){ ping(); enviarEventos(); if (sync){ sync.cancelarEspera(); sync.subir(); } return; }
   tick = Date.now();
-  // Si se usó la app en otro dispositivo mientras tanto, recargar para traer lo último
-  if (ocultoDesde && Date.now() - ocultoDesde > 120000 && !pendiente && !guardando){
-    const { data } = await supabase.from('user_data').select('updated_at').eq('user_id', uid).maybeSingle();
-    if (data && Date.parse(data.updated_at) > ultimoSync + 1000) location.reload();
-  }
+  // al volver: traer lo que se haya cargado en otro dispositivo
+  if (sync) sync.traer().catch(() => {});
 });
+// con la app abierta también se revisa cada tanto, por si se está usando en otro dispositivo a la vez
+setInterval(() => { if (!LOCAL && sync && document.visibilityState === 'visible') sync.traer().catch(() => {}); }, 45000);
 
 /* ---------- entrar a la app ---------- */
-let entrando = false, subirAlEntrar = false;
+let entrando = false;
 async function entrar(user){
   if (entrando) return; entrando = true;
-  uid = user.id;
+  uid = user.id; prepararSync();
   pantalla('<p class="muted">Cargando tus datos…</p>');
   let { data: perfil } = await supabase.from('profiles').select('nombre, email, is_admin').eq('id', uid).maybeSingle();
   if (!perfil) perfil = { nombre: (user.user_metadata && user.user_metadata.nombre) || user.email.split('@')[0], email: user.email, is_admin: false };
   const { data: fila, error } = await supabase.from('user_data').select('data, updated_at').eq('user_id', uid).maybeSingle();
-  let datos = null, inicio = null;
-  let cache = null; try { cache = JSON.parse(localStorage.getItem(cacheKey())); } catch (e) {}
+  const ab = sync.abrir(fila, !!error);
+  let datos = ab.datos, inicio = null;
   if (error){
-    if (!cache){ entrando = false; return pantalla(`<h1>No se pudo cargar</h1><p class="muted small">${esc(errorTexto(error))}</p><button class="btn pri" onclick="location.reload()">Reintentar</button>`); }
-    datos = cache; syncErr.textContent = 'Sin conexión con la nube: estás viendo lo guardado en este dispositivo.'; syncErr.hidden = false;
-  } else if (fila){
-    datos = fila.data; ultimoSync = Date.parse(fila.updated_at);
-    // la última vez se cerró antes de subir: lo de este dispositivo es más nuevo que la nube
-    let marca = 0; try { marca = Number(localStorage.getItem(pendKey())) || 0; } catch (e) {}
-    if (cache && marca > ultimoSync){ datos = cache; subirAlEntrar = true; }
-  }
-  else if (cache) datos = cache;
-  else inicio = await verBienvenida(perfil.nombre);
+    if (!datos){ entrando = false; return pantalla(`<h1>No se pudo cargar</h1><p class="muted small">${esc(errorTexto(error))}</p><button class="btn pri" onclick="location.reload()">Reintentar</button>`); }
+    syncErr.textContent = 'Sin conexión con la nube: estás viendo lo guardado en este dispositivo.'; syncErr.hidden = false;
+  } else if (!datos) inicio = await verBienvenida(perfil.nombre);
   // La terminología pesa bastante: si ya hay una copia guardada se abre con esa y se actualiza por detrás
   const guardado = glosarioGuardado(), fresco = cargarGlosario();
   const glosario = guardado || await fresco || [];
   await iniciarUso();
   track('ingreso', dispositivo());
-  arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio, glosario);
-  if (subirAlEntrar) guardar(datos);
+  if (ab.rescatadas) track('rescate', ab.rescatadas);
+  arrancar({ id: uid, nombre: perfil.nombre, email: perfil.email, isAdmin: !!perfil.is_admin }, datos, inicio, glosario, ab.rescatadas);
+  if (ab.subir) guardar(datos);
   if (guardado) fresco.then(lista => { if (lista && window.__VDM__ && window.__VDM__.alGlosario) window.__VDM__.alGlosario(lista); });
 }
 
@@ -235,8 +218,8 @@ const glosario = {
 };
 
 async function salir(){
-  enviarEventos(); clearTimeout(timerGuardar); await subir();
-  try { localStorage.removeItem(cacheKey()); } catch (e) {}
+  enviarEventos(); if (sync){ sync.cancelarEspera(); await sync.subir(); }
+  try { ['cache', 'pend', 'base'].forEach(k => localStorage.removeItem(`vdm-${k}-${uid}`)); } catch (e) {}
   await supabase.auth.signOut(); location.reload();
 }
 /* ---------- imágenes de las fichas: carpeta privada de cada cuenta en Supabase Storage ---------- */
@@ -293,8 +276,8 @@ const push = {
 };
 async function estadisticas(){ const { data, error } = await supabase.rpc('admin_stats'); if (error) throw new Error(errorTexto(error)); return data; }
 
-function arrancar(user, data, inicio, glos){
-  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario, imagenes, push };
+function arrancar(user, data, inicio, glos, rescatadas){
+  window.__VDM__ = { user, data, inicio, save: guardar, track, logout: salir, adminStats: estadisticas, glosario: glos || [], glosarioApi: glosario, imagenes, push, rescatadas };
   import('./app.js').then(() => { authBox.hidden = true; authBox.innerHTML = ''; });
 }
 
