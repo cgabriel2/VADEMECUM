@@ -1990,9 +1990,10 @@ function renderPomo(){
     <div class="stack" style="gap:10px;padding:12px 8px 4px"><label class="f">Estudiando<select id="pm-m" data-change="pm-m"><option value="">Sin materia</option>${cursando().map(m => `<option value="${m.id}" ${S.pomo.materiaId === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
       <div class="row small" style="gap:6px">Bloques: ${[[25, 5], [50, 10]].map(([f, p]) => `<button class="chip ${S.pomo.foco === f ? 'on' : ''}" data-act="pm-preset" data-f="${f}" data-p="${p}">${f} min + ${p} de descanso</button>`).join('')}</div>
       <div class="row small" style="gap:6px">Sonido al terminar: <button class="chip ${S.pomo.sonido !== false ? 'on' : ''}" data-act="pm-sonido" aria-pressed="${S.pomo.sonido !== false}">${S.pomo.sonido !== false ? 'Activado' : 'Desactivado'}</button><button class="chip" data-act="pm-probar">Probar sonido</button></div>
+      ${escritorio ? '' : `<div class="row small" style="gap:6px">Sonar con el celular bloqueado o en otra app: <button class="chip ${S.pomo.fondo !== false ? 'on' : ''}" data-act="pm-fondo" aria-pressed="${S.pomo.fondo !== false}">${S.pomo.fondo !== false ? 'Sí' : 'No'}</button></div>`}
       ${'wakeLock' in navigator ? `<div class="row small" style="gap:6px">Pantalla encendida mientras corre: <button class="chip ${S.pomo.pantalla !== false ? 'on' : ''}" data-act="pm-pantalla" aria-pressed="${S.pomo.pantalla !== false}">${S.pomo.pantalla !== false ? 'Sí' : 'No'}</button></div>` : ''}
       ${PUSH ? pushOpcion() : 'Notification' in window ? `<div class="row small" style="gap:6px">Notificación al terminar: <button class="chip ${S.pomo.notif === true && Notification.permission === 'granted' ? 'on' : ''}" data-act="pm-notif" aria-pressed="${S.pomo.notif === true}">${S.pomo.notif === true && Notification.permission === 'granted' ? 'Activada' : 'Desactivada'}</button></div>` : ''}
-      <p class="small muted">${PUSH && S.pomo.push === true ? 'Te llega una notificación al terminar aunque bloquees el celular o cierres la app. Con la app abierta, además suena la campana.' : 'Para que suene, dejá la app abierta (la pantalla no se apaga mientras corre). Si bloqueás el celular o cambiás de app, el teléfono la pausa: el aviso aparece cuando vuelvas a abrirla.'} Si “Probar sonido” no se escucha, subí el volumen multimedia del teléfono.</p>
+      <p class="small muted">${!escritorio && S.pomo.fondo !== false ? 'Mientras corre, un audio en silencio mantiene la app activa para que la alarma suene aunque bloquees el celular o cambies de app. Eso pausa la música de otras apps: si estudiás con música, apagalo. ' : 'Para que suene, dejá la app abierta. '}${PUSH && S.pomo.push === true ? 'Además te llega una notificación al terminar. ' : ''}Si “Probar sonido” no se escucha, subí el volumen multimedia del teléfono.</p>
       <p class="small muted">Hoy registraste <b>${fmtMin(hoyMin)}</b> de estudio. Cada bloque completo suma a tu racha y a Progreso.</p></div>`;
 }
 /* Aviso al terminar un bloque o un descanso.
@@ -2007,60 +2008,92 @@ function audioPomo(){
   try { PM.actx && PM.actx.resume && PM.actx.resume(); } catch (e) {}
   return PM.actx;
 }
-function campana(ctx, t0){
-  const out = ctx.createGain(); out.gain.value = 0.6; out.connect(ctx.destination);
-  [0, 1.4].forEach(r => [[0, 1046.5], [0.18, 1318.5], [0.36, 1568]].forEach(([d, f]) => [[1, 0.5], [2.76, 0.12]].forEach(([h, a]) => {
-    const t = t0 + r + d, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f * h;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
-    o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.15); })));
+// La alarma: pitidos agudos a todo volumen (es la zona que mejor se oye en el parlante de un celular).
+// El patrón dura 2 segundos y se repite hasta 30 segundos, o hasta que se toque la pantalla.
+const ALARMA_SEG = 30;
+function muestrasAlarma(sr){
+  const n = Math.floor(sr * 2), d = new Float32Array(n), ciclo = 1, beep = 0.16, hueco = 0.06;
+  for (let i = 0; i < n; i++){
+    const t = i / sr, c = t % (ciclo * 2), fase = c % ciclo, k = Math.floor(fase / (beep + hueco)); if (k > 2) continue;
+    const tb = fase - k * (beep + hueco); if (tb > beep) continue;
+    const f = c < ciclo ? 1760 : 2217, env = Math.min(1, tb / 0.004, (beep - tb) / 0.004);
+    d[i] = Math.tanh(3 * (Math.sin(2 * Math.PI * f * t) + 0.5 * Math.sin(4 * Math.PI * f * t) + 0.3 * Math.sin(6 * Math.PI * f * t))) * env * 0.98;
+  }
+  return d;
+}
+function alarmaWeb(ctx, t0, unaVez){
+  const m = muestrasAlarma(ctx.sampleRate), b = ctx.createBuffer(1, m.length, ctx.sampleRate), out = ctx.createGain(), f = ctx.createBufferSource();
+  b.copyToChannel(m, 0); f.buffer = b; f.loop = true; f.connect(out); out.connect(ctx.destination); f.start(t0); f.stop(t0 + (unaVez ? 2 : ALARMA_SEG));
   return out;
 }
-// la misma campana, armada como archivo WAV
-function wavCampana(){
-  const sr = 22050, n = Math.floor(sr * 2.9), d = new Float32Array(n);
-  [0, 1.4].forEach(r => [[0, 1046.5], [0.18, 1318.5], [0.36, 1568]].forEach(([dd, f]) => [[1, 0.5], [2.76, 0.12]].forEach(([h, a]) => {
-    const i0 = Math.floor((r + dd) * sr), fin = Math.min(n, i0 + Math.floor(1.15 * sr));
-    for (let i = i0; i < fin; i++){ const t = (i - i0) / sr; d[i] += a * (t < 0.01 ? t / 0.01 : Math.exp(-(t - 0.01) * 7.8)) * Math.sin(2 * Math.PI * f * h * t); } })));
-  let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, Math.abs(d[i])); const k = 0.95 / (mx || 1);
-  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+const wavDataUri = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return 'data:audio/wav;base64,' + btoa(s); };
+function wav16(m, sr){
+  const n = m.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
   w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
   v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i] * k)) * 32767, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, m[i])) * 32767, true);
   return wavDataUri(new Uint8Array(buf));
 }
-const wavDataUri = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return 'data:audio/wav;base64,' + btoa(s); };
-// un instante de silencio: reproducirlo con un toque habilita ese mismo audio para sonar más tarde sin tocar nada
-function wavSilencio(){
-  const n = 1600, buf = new Uint8Array(44 + n).fill(128), v = new DataView(buf.buffer), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
-  return wavDataUri(buf);
+const urlAlarma = () => PM.urlAlarma || (PM.urlAlarma = wav16(muestrasAlarma(22050), 22050));
+// "silencio": un ruido tan bajo que no se oye (el silencio absoluto puede no contar como audio para el teléfono)
+const urlSilencio = () => PM.urlSilencio || (PM.urlSilencio = wav16(Float32Array.from({ length: 40000 }, (_, i) => (i % 2 ? 1 : -1) * 0.00006), 8000));
+const audioEl = () => {
+  if (PM.audio) return PM.audio;
+  const a = PM.audio = new Audio(); a.preload = 'auto'; a.setAttribute('playsinline', '');
+  // mientras haya audio, estos eventos siguen llegando aunque el celular esté bloqueado: mueven el reloj del pomodoro
+  a.addEventListener('timeupdate', () => { if (PM.alarmaHasta && Date.now() >= PM.alarmaHasta) pomoCallar(); else if (document.hidden) pomoTick(); });
+  a.addEventListener('ended', () => { if (PM.audioModo === 'alarma') pomoCallar(); });
+  return a;
+};
+function ponerAudio(modo, loop){
+  const a = audioEl(); if (PM.audioModo !== modo){ a.src = modo === 'alarma' ? urlAlarma() : urlSilencio(); PM.audioModo = modo; }
+  a.loop = loop; a.muted = false; a.volume = 1; return a;
 }
-const urlCampana = () => PM.urlCampana || (PM.urlCampana = wavCampana());
-const audioEl = () => { if (!PM.audio){ PM.audio = new Audio(); PM.audio.preload = 'auto'; PM.audio.setAttribute('playsinline', ''); } return PM.audio; };
-// el celular solo deja sonar más tarde si ese audio ya sonó con un toque, y un audio "mudo" no cuenta:
-// se reproduce un silencio de verdad en el primer toque y después se le carga la campana
+// el celular solo deja sonar más tarde si ese mismo audio ya sonó con un toque, y un audio "mudo" no cuenta
 function pomoDestrabar(){
   audioPomo(); if (PM.destrabado || PM.destrabando) return;
-  const a = audioEl(); PM.destrabando = true; a.muted = false; a.src = wavSilencio();
-  const listo = () => { PM.destrabando = false; PM.destrabado = true; a.src = urlCampana(); try { a.load(); } catch (e) {} };
+  PM.destrabando = true; const a = ponerAudio('silencio', false);
+  const listo = () => { PM.destrabando = false; PM.destrabado = true; pomoFondo(); };
   try { const p = a.play(); if (p && p.then) p.then(listo, () => { PM.destrabando = false; }); else listo(); } catch (e) { PM.destrabando = false; }
 }
-// cualquier toque sirve: así también funciona si la app se recargó con el pomodoro corriendo
-['click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (!PM.destrabado || (PM.actx && PM.actx.state !== 'running')) pomoDestrabar(); }, true));
-function sonar(){
+// Con el pomodoro corriendo en el celular se mantiene el audio en silencio: así el teléfono no congela la app
+// al bloquearse o al cambiar de app, y cuando termina el tiempo se cambia por la alarma.
+function pomoFondo(){
+  if (PM.alarmaHasta) return;
+  const a = audioEl(), quiere = !escritorio && PM.running && S.pomo.fondo !== false;
+  if (!quiere){ if (PM.audioModo === 'silencio' && !a.paused) a.pause(); return; }
+  ponerAudio('silencio', true);
+  if (a.paused){ try { const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+  if ('mediaSession' in navigator) try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: PM.phase === 'foco' ? 'Pomodoro: foco' : 'Pomodoro: descanso', artist: 'MedNoe', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+    navigator.mediaSession.setActionHandler('pause', () => A['pm-toggle']());
+    navigator.mediaSession.setActionHandler('play', () => A['pm-toggle']());
+  } catch (e) {}
+}
+function pomoCallar(){
+  PM.alarmaHasta = 0;
+  if (PM.webSonando){ try { PM.webSonando.disconnect(); } catch (e) {} PM.webSonando = null; }
+  if (PM.audio && PM.audioModo === 'alarma') PM.audio.pause();
+  pomoFondo();
+}
+// cualquier toque apaga la alarma; y sirve para habilitar el audio si la app se recargó con el pomodoro corriendo
+['click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => {
+  if (PM.alarmaHasta || PM.webSonando) pomoCallar();
+  if (!PM.destrabado || (PM.actx && PM.actx.state !== 'running')) pomoDestrabar(); else pomoFondo();
+}, true));
+function sonar(unaVez){
   audioPomo();
-  const a = audioEl(); if (a.src !== urlCampana()) a.src = urlCampana();
-  a.muted = false; a.volume = 1; try { a.currentTime = 0; } catch (e) {}
-  const conCampana = err => { track('pomodoro-sonido', 'bloqueado ' + ((err && err.name) || '')); const ctx = audioPomo(); if (ctx){ try { campana(ctx, ctx.currentTime + 0.05); } catch (e) {} } };
-  try { const p = a.play(); if (p && p.then) p.then(() => { PM.destrabado = true; track('pomodoro-sonido', 'ok'); }, conCampana); } catch (e) { conCampana(e); }
+  PM.alarmaHasta = Date.now() + (unaVez ? 2500 : ALARMA_SEG * 1000);
+  const a = ponerAudio('alarma', !unaVez); try { a.currentTime = 0; } catch (e) {}
+  const conWeb = err => { track('pomodoro-sonido', 'bloqueado ' + ((err && err.name) || '')); const ctx = audioPomo(); if (ctx){ try { PM.webSonando = alarmaWeb(ctx, ctx.currentTime + 0.05, unaVez); } catch (e) {} } };
+  try { const p = a.play(); if (p && p.then) p.then(() => { PM.destrabado = true; track('pomodoro-sonido', document.hidden ? 'ok de fondo' : 'ok'); }, conWeb); } catch (e) { conWeb(e); }
 }
 function pomoAgendar(){
   const ctx = PM.actx;
-  if (PM.son && ctx && ctx.currentTime < PM.sonT0){ try { PM.son.disconnect(); } catch (e) {} }
+  if (PM.son && ctx){ if (ctx.currentTime < PM.sonT0){ try { PM.son.disconnect(); } catch (e) {} } else PM.webSonando = PM.son; }
   PM.son = null; PM.sonPara = 0;
   if (!escritorio || !ctx || ctx.state !== 'running' || !PM.running || S.pomo.sonido === false) return;
-  try { PM.sonT0 = ctx.currentTime + Math.max(0, (PM.endsAt - Date.now()) / 1000); PM.son = campana(ctx, PM.sonT0); PM.sonPara = PM.endsAt; } catch (e) {}
+  try { PM.sonT0 = ctx.currentTime + Math.max(0, (PM.endsAt - Date.now()) / 1000); PM.son = alarmaWeb(ctx, PM.sonT0); PM.sonPara = PM.endsAt; } catch (e) {}
 }
 // opción de avisos con la app cerrada; en iPhone solo se puede con la app instalada en la pantalla de inicio
 function pushOpcion(){
@@ -2076,7 +2109,7 @@ async function pomoPantalla(){
     else if (!quiere && PM.lock){ const l = PM.lock; PM.lock = null; await l.release(); }
   } catch (e) { PM.lock = null; }
 }
-function pomoGuardar(){ try { localStorage.setItem(PM_KEY, JSON.stringify({ phase: PM.phase, running: PM.running, endsAt: PM.endsAt, left: PM.left })); } catch (e) {} pomoPush(); }
+function pomoGuardar(){ try { localStorage.setItem(PM_KEY, JSON.stringify({ phase: PM.phase, running: PM.running, endsAt: PM.endsAt, left: PM.left })); } catch (e) {} pomoPush(); pomoFondo(); }
 // aviso desde el servidor (llega aunque la app esté cerrada): se programa al arrancar y se cancela al pausar o reiniciar
 const PUSH = HOST.push && HOST.push.disponible() ? HOST.push : null;
 function pomoPush(){
@@ -2129,7 +2162,7 @@ function pomoTick(){
   pomoBtn(); const big = $('#pm-big'); if (big) big.textContent = fmtClock(PM.left * 1000);
 }
 // al volver a la app: se revisa el reloj enseguida y se vuelve a pedir la pantalla encendida
-document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; audioPomo(); pomoTick(); pomoAgendar(); pomoPantalla(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; audioPomo(); pomoTick(); pomoAgendar(); pomoPantalla(); pomoFondo(); });
 
 /* ---------- carrera: correlatividades y regularidades ---------- */
 const ESTADOS = [['aprobada','Aprobada'],['regular','Regular'],['cursando','Cursando'],['pendiente','Pendiente']];
@@ -2535,7 +2568,8 @@ Texto del examen:
   'pm-otro': () => { closeModal(); pomoDestrabar(); pomoSet('foco', true); renderPomo(); pomoBtn(); },
   'pm-saltar-desc': () => { closeModal(); pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-sonido': () => { S.pomo.sonido = S.pomo.sonido === false; save(); if (S.pomo.sonido) audioPomo(); pomoAgendar(); renderPomo(); },
-  'pm-probar': () => sonar(),
+  'pm-probar': () => sonar(true),
+  'pm-fondo': () => { S.pomo.fondo = S.pomo.fondo === false; save(); pomoFondo(); renderPomo(); },
   'pm-reset': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); } pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-skip': () => { if (PM.phase === 'foco'){ const el = pmFull() - (PM.running ? Math.round((PM.endsAt - Date.now()) / 1000) : PM.left); if (el >= 300) logSesion(el / 60); pomoSet('pausa', false); } else pomoSet('foco', false); renderPomo(); pomoBtn(); },
   'pm-preset': d => { S.pomo.foco = +d.f; S.pomo.pausa = +d.p; save(); if (!PM.running){ PM.left = pmFull(); pomoGuardar(); } renderPomo(); pomoBtn(); }
